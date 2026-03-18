@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "Faucet Auto-Claimer",
+  "version": "1.0",
+  "description": "Auto-claims litepick, dogepick, solpick, and bnbpick faucets every 61 minutes.",
+  "permissions": [
+    "tabs",
+    "alarms",
+    "storage",
+    "scripting",
+    "debugger"
+  ],
+  "host_permissions": [
+    "https://litepick.io/*",
+    "https://dogepick.io/*",
+    "https://solpick.io/*",
+    "https://bnbpick.io/*",
+    "https://tronpick.io/*",
+    "https://polpick.io/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Faucet Auto-Claimer"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://litepick.io/*",
+        "https://dogepick.io/*",
+        "https://solpick.io/*",
+        "https://bnbpick.io/*",
+        "https://tronpick.io/*",
+        "https://polpick.io/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
