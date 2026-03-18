@@ -22,6 +22,7 @@ const CAPTCHA_RETRY_MS   = 1500;    // Retry captcha click every 1.5 seconds
 const MAX_CAPTCHA_RETRIES = 60;     // Keep trying through longer challenge loads
 const NATIVE_CLICK_MIN_INTERVAL_MS = 900;
 const DICE_FIXED_MULTIPLIER = 2.0;
+const MIN_STARTING_BALANCE_BET_FRACTION = 0.10;
 const PHASE_HEARTBEAT_INTERVAL_MS = 15000;
 
 let lastNativeClickAt = 0;
@@ -984,11 +985,11 @@ async function claimBonusFaucets() {
 // Combined High-Roller strategy engine.
 
 const DEFAULT_HIGH_ROLLER_CONFIG = Object.freeze({
-  base_bet_fraction: 0.08,
-  max_bet_fraction: 0.20,
-  max_ladder_depth: 3,
+  base_bet_fraction: 0.10,
+  max_bet_fraction: 0.40,
+  max_ladder_depth: 5,
   history_window: 10,
-  streak_trigger: 2,
+  streak_trigger: 1,
   volatility_trigger: 4
 });
 
@@ -1163,6 +1164,15 @@ class CombinedHighRollerStrategy {
     const hardCap = this.current_bankroll * this.config.max_bet_fraction;
     bet = Math.min(bet, hardCap, this.current_bankroll);
 
+    const startBalanceFloor = this.start_bankroll * MIN_STARTING_BALANCE_BET_FRACTION;
+    if (this.current_bankroll <= startBalanceFloor) {
+      // When bankroll drops below the minimum floor, go all-in by request.
+      bet = this.current_bankroll;
+    } else {
+      // Keep bets aggressive: never below 10% of starting bankroll.
+      bet = Math.max(bet, startBalanceFloor);
+    }
+
     if (!Number.isFinite(bet) || bet <= 0) {
       this.last_bet = 0;
       this.log_state("bet-invalid");
@@ -1250,7 +1260,7 @@ async function getDicebetConfig() {
     try { return new URL(f.url).hostname === location.hostname; } catch { return false; }
   });
   const parsedChance = parseFloat(faucet?.dbChance || "48.5");
-  const parsedThreshold = parseFloat(faucet?.wdThreshold || faucet?.dbWdThreshold || "0");
+  const parsedThreshold = parseFloat(faucet?.wdThreshold || "0");
   const rawStrategyConfig = faucet?.dbStrategyConfig && typeof faucet.dbStrategyConfig === "object"
     ? faucet.dbStrategyConfig
     : (faucet?.dbStrategy && typeof faucet.dbStrategy === "object" ? faucet.dbStrategy : {});
@@ -1417,12 +1427,7 @@ function placeDicebetRound(side) {
   applyDicebetSide(side);
 
   if (typeof window.process_bet_game_dice === "function") {
-    const statusBefore = typeof window.auto_betting_status === "string" ? window.auto_betting_status : null;
     window.process_bet_game_dice();
-    const statusAfter = typeof window.auto_betting_status === "string" ? window.auto_betting_status : null;
-    if (statusBefore === "running" && statusAfter === "running") {
-      return false;
-    }
     return true;
   }
 
@@ -1538,25 +1543,25 @@ async function runDicebet() {
     }
     log(`Placing bet ${nextBet.toFixed(8)} | mode=${strategy.mode} | streak=${strategy.win_streak} | ladderStep=${strategy.ladder_step + 1}`);
 
-    const readyToBet = await waitForDicebetIdle(10000);
+    const readyToBet = await waitForDicebetIdle(120000);
     if (!readyToBet) {
-      log("ERROR: Dice page stayed busy before placing bet");
-      sendError("dicebet-stuck-running-before");
-      return false;
+      log("Dice page stayed busy before placing bet; waiting for the round to finish.");
+      await sleep(1200);
+      continue;
     }
 
     const started = placeDicebetRound(side);
     if (!started) {
-      log("ERROR: Failed to trigger dice bet round");
-      sendError("dicebet-round-not-started");
-      return false;
+      log("Dice bet trigger not ready yet; retrying without closing tab.");
+      await sleep(2000);
+      continue;
     }
 
-    const finishedRound = await waitForDicebetIdle(18000);
+    const finishedRound = await waitForDicebetIdle(180000);
     if (!finishedRound) {
-      log("ERROR: Dice page did not settle after bet");
-      sendError("dicebet-stuck-running-after");
-      return false;
+      log("Dice round is still in progress after extended wait; continuing without closing tab.");
+      await sleep(1200);
+      continue;
     }
     await sleep(500);
 

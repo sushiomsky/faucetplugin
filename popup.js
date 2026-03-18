@@ -143,11 +143,11 @@ const saveMsg    = document.getElementById("saveMsg");
 const DEFAULT_DB_SIDE = "higher";
 const DEFAULT_DB_STRATEGY = "combined-high-roller";
 const DEFAULT_HIGH_ROLLER_CONFIG = Object.freeze({
-  base_bet_fraction: 0.08,
-  max_bet_fraction: 0.20,
-  max_ladder_depth: 3,
+  base_bet_fraction: 0.10,
+  max_bet_fraction: 0.40,
+  max_ladder_depth: 5,
   history_window: 10,
-  streak_trigger: 2,
+  streak_trigger: 1,
   volatility_trigger: 4
 });
 
@@ -359,17 +359,18 @@ function renderConfigForSite(index) {
         </div>
 
         <div class="cfg-subtitle">Combined High-Roller Options</div>
+        <div class="cfg-note" title="${escapeAttr("Bets never go below 10% of starting bankroll. If bankroll falls below that floor, the bot goes all-in.")}">Minimum bet floor: 10% of starting bankroll (all-in below floor).</div>
         <div class="cfg-grid three-col">
           <div class="cfg-row">
-            <label for="fdb_bbf">${tipLabel("Base Bet Fraction", "Default fraction of bankroll used in Kelly Hybrid mode.")}</label>
+            <label for="fdb_bbf">${tipLabel("Base Bet Fraction", "Default Kelly bet fraction. Aggressive default is 10%.")}</label>
             <input type="number" id="fdb_bbf" value="${strategyCfg.base_bet_fraction}" step="0.01" min="0.0001" max="1" />
           </div>
           <div class="cfg-row">
-            <label for="fdb_mbf">${tipLabel("Max Bet Fraction", "Hard cap fraction of bankroll for any single bet.")}</label>
+            <label for="fdb_mbf">${tipLabel("Max Bet Fraction", "Maximum allowed bet fraction per roll. Aggressive default is 40%.")}</label>
             <input type="number" id="fdb_mbf" value="${strategyCfg.max_bet_fraction}" step="0.01" min="0.01" max="1" />
           </div>
           <div class="cfg-row">
-            <label for="fdb_mld">${tipLabel("Max Ladder Depth", "Maximum steps used in streak/breakout ladders before reset.")}</label>
+            <label for="fdb_mld">${tipLabel("Max Ladder Depth", "How many ladder steps can be climbed before resetting to Kelly mode.")}</label>
             <input type="number" id="fdb_mld" value="${strategyCfg.max_ladder_depth}" step="1" min="1" max="10" />
           </div>
           <div class="cfg-row">
@@ -377,7 +378,7 @@ function renderConfigForSite(index) {
             <input type="number" id="fdb_hw" value="${strategyCfg.history_window}" step="1" min="1" max="200" />
           </div>
           <div class="cfg-row">
-            <label for="fdb_st">${tipLabel("Streak Trigger", "Consecutive wins needed to enter Streak Harvester mode.")}</label>
+            <label for="fdb_st">${tipLabel("Streak Trigger", "Consecutive wins needed to enter Streak Harvester mode. Aggressive default is 1.")}</label>
             <input type="number" id="fdb_st" value="${strategyCfg.streak_trigger}" step="1" min="1" max="50" />
           </div>
           <div class="cfg-row">

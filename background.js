@@ -1,14 +1,14 @@
 const ALARM_NAME = "faucet-tick"; // fires every minute to check what's due
-const SITE_PHASE_TIMEOUT_MS = 6 * 60 * 1000; // force-advance stuck site after 6 minutes
+const SITE_PHASE_TIMEOUT_MS = 20 * 60 * 1000; // force-advance stuck site after 20 minutes
 
 const DEFAULT_DB_SIDE = "higher";
 const DEFAULT_DB_STRATEGY = "combined-high-roller";
 const DEFAULT_HIGH_ROLLER_CONFIG = Object.freeze({
-  base_bet_fraction: 0.08,
-  max_bet_fraction: 0.20,
-  max_ladder_depth: 3,
+  base_bet_fraction: 0.10,
+  max_bet_fraction: 0.40,
+  max_ladder_depth: 5,
   history_window: 10,
-  streak_trigger: 2,
+  streak_trigger: 1,
   volatility_trigger: 4
 });
 
@@ -128,6 +128,8 @@ async function checkAndRun(forceAll = false) {
     const tabId = parseInt(id, 10);
     const entry = activeTabs[id];
     const phaseStartedAt = entry?.phaseStartedAt || entry?.startedAt || 0;
+    const lastHeartbeatAt = entry?.lastHeartbeatAt || 0;
+    const hasFreshHeartbeat = lastHeartbeatAt > 0 && (now - lastHeartbeatAt) <= SITE_PHASE_TIMEOUT_MS;
 
     if (!allTabIds.includes(tabId)) {
       delete activeTabs[id]; 
@@ -136,7 +138,7 @@ async function checkAndRun(forceAll = false) {
       continue;
     }
 
-    if (phaseStartedAt && (now - phaseStartedAt) > SITE_PHASE_TIMEOUT_MS) {
+    if (phaseStartedAt && (now - phaseStartedAt) > SITE_PHASE_TIMEOUT_MS && !hasFreshHeartbeat) {
       delete activeTabs[id];
       stateDirty = true;
       timedOutEntries.push({ tabId, faucetUrl: entry?.faucetUrl, phase: entry?.phase || "unknown" });
