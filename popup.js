@@ -40,11 +40,19 @@ async function refreshStatus() {
   const now          = Date.now();
 
   // Header state
-  headerState.textContent = running ? "● Running" : enabled ? "● Active" : "○ Disabled";
-  headerState.style.color = running ? "#e0b03f"  : enabled ? "#4caf50"  : "#e05050";
+  const activeList = Object.values(activeTabs).filter(t => t.phase !== "done");
+  if (!enabled) {
+    headerState.textContent = "○ Disabled";
+    headerState.style.color = "#e05050";
+  } else if (activeList.length > 0) {
+    headerState.textContent = "● Running";
+    headerState.style.color = "#e0b03f";
+  } else {
+    headerState.textContent = "● Scheduler";
+    headerState.style.color = "#4caf50";
+  }
 
   // Status badge
-  const activeList = Object.values(activeTabs).filter(t => t.phase !== "done");
   if (running && activeList.length > 0) {
     const names = activeList.map(t => hostname(t.faucetUrl)).join(", ");
     statusDot.className = "dot orange";
@@ -54,11 +62,11 @@ async function refreshStatus() {
     statusText.textContent = "Scheduler disabled";
   } else {
     statusDot.className = "dot green";
-    statusText.textContent = "Idle — waiting for next run";
+    statusText.textContent = "Scheduler mode — monitoring runs";
   }
 
   // Next run — earliest due faucet
-  if (!running && enabled) {
+  if (enabled && activeList.length === 0) {
     let earliest = Infinity;
     for (const f of faucets.filter(f => f.active !== false)) {
       const last = claimHistory[f.url] || 0;
@@ -72,7 +80,7 @@ async function refreshStatus() {
         ? "Due now"
         : `Next run in ${fmtCountdown(earliest - now)}`;
     }
-  } else if (running) {
+  } else if (activeList.length > 0) {
     nextRunEl.textContent = `Started at ${fmtTime(stored.lastRunStart)}`;
   } else {
     nextRunEl.textContent = "";
@@ -109,7 +117,7 @@ async function refreshStatus() {
   });
 
   runBtn.disabled = !enabled;
-  stopBtn.style.display = running ? "block" : "none";
+  stopBtn.style.display = enabled ? "block" : "none";
 
   renderLog(log);
 }
@@ -166,6 +174,56 @@ function normalizeDiceSide(side) {
 
 function getDefaultHighRollerConfig() {
   return { ...DEFAULT_HIGH_ROLLER_CONFIG };
+}
+
+const DEFAULT_USD1_WD_THRESHOLD_BY_HOST = Object.freeze({
+  "litepick.io": "0.01",
+  "dogepick.io": "6",
+  "solpick.io": "0.0065",
+  "bnbpick.io": "0.0018",
+  "tronpick.io": "8",
+  "polpick.io": "2"
+});
+
+const LEGACY_WD_THRESHOLD_BY_HOST = Object.freeze({
+  "litepick.io": "0.005",
+  "dogepick.io": "10.0",
+  "solpick.io": "0.0025",
+  "bnbpick.io": "0.005",
+  "tronpick.io": "7.5",
+  "polpick.io": "1.5"
+});
+
+function normalizeHost(host) {
+  return String(host || "").replace(/^www\./i, "").toLowerCase();
+}
+
+function getDefaultWdThresholdForUrl(url) {
+  try {
+    const host = normalizeHost(new URL(url).hostname);
+    return DEFAULT_USD1_WD_THRESHOLD_BY_HOST[host] || "1";
+  } catch {
+    return "1";
+  }
+}
+
+function normalizeWdThresholdForUrl(url, rawThreshold) {
+  const fallback = getDefaultWdThresholdForUrl(url);
+  const parsed = parseFloat(rawThreshold);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+
+  let host = "";
+  try {
+    host = normalizeHost(new URL(url).hostname);
+  } catch {}
+
+  const legacyRaw = LEGACY_WD_THRESHOLD_BY_HOST[host];
+  const legacyParsed = parseFloat(legacyRaw);
+  if (Number.isFinite(legacyParsed) && Math.abs(parsed - legacyParsed) < 1e-12) {
+    return fallback;
+  }
+
+  return String(rawThreshold).trim();
 }
 
 function normalizeHighRollerConfig(rawConfig = {}) {
@@ -225,12 +283,12 @@ function tipLabel(text, tooltip) {
 
 // Multi-site configuration: active faucets run sequentially
 const FAUCET_DEFAULTS = [
-  { url: "https://litepick.io/faucet.php",  label: "litepick",  active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: "0.005",  wdAddress: "MWzkbmBnTzyauvgGudXwnDq18PLU9NPwAD", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-  { url: "https://dogepick.io/faucet.php",  label: "dogepick",  active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: "10.0",   wdAddress: "DFWaPscZ9LZ6W1ZP3Cj17zBbgop2FeNweE", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-  { url: "https://solpick.io/faucet.php",   label: "solpick",   active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: "0.0025", wdAddress: "7DjswfVdL8vX6xA2Wy1Vr6MEZQT1nTWkrL9U2taq9GhZ", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-  { url: "https://bnbpick.io/faucet.php",   label: "bnbpick",   active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: "0.005",  wdAddress: "0x05CF5E732c2c2a4C9aF1994DFC5878038cE37f7B", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-  { url: "https://tronpick.io/faucet.php",  label: "tronpick",  active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: "7.5",    wdAddress: "TAVvoGKqQqZpM4YBccJ5wyftPYRBKKyjEv", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-  { url: "https://polpick.io/faucet.php",   label: "polpick",   active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: "1.5",    wdAddress: "0x05CF5E732c2c2a4C9aF1994DFC5878038cE37f7B", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() }
+  { url: "https://litepick.io/faucet.php",  label: "litepick",  active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://litepick.io/faucet.php"), wdAddress: "MWzkbmBnTzyauvgGudXwnDq18PLU9NPwAD", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
+  { url: "https://dogepick.io/faucet.php",  label: "dogepick",  active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://dogepick.io/faucet.php"), wdAddress: "DFWaPscZ9LZ6W1ZP3Cj17zBbgop2FeNweE", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
+  { url: "https://solpick.io/faucet.php",   label: "solpick",   active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://solpick.io/faucet.php"), wdAddress: "7DjswfVdL8vX6xA2Wy1Vr6MEZQT1nTWkrL9U2taq9GhZ", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
+  { url: "https://bnbpick.io/faucet.php",   label: "bnbpick",   active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://bnbpick.io/faucet.php"), wdAddress: "0x05CF5E732c2c2a4C9aF1994DFC5878038cE37f7B", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
+  { url: "https://tronpick.io/faucet.php",  label: "tronpick",  active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://tronpick.io/faucet.php"), wdAddress: "TAVvoGKqQqZpM4YBccJ5wyftPYRBKKyjEv", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
+  { url: "https://polpick.io/faucet.php",   label: "polpick",   active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://polpick.io/faucet.php"), wdAddress: "0x05CF5E732c2c2a4C9aF1994DFC5878038cE37f7B", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() }
 ];
 
 let currentFaucets = [];
@@ -274,7 +332,10 @@ async function loadConfig() {
   const storedByUrl = {};
   for (const f of storedFaucets) { if (f.url) storedByUrl[f.url] = f; }
   
-  currentFaucets = FAUCET_DEFAULTS.map(def => ({ ...def, ...(storedByUrl[def.url] || {}) }));
+  currentFaucets = FAUCET_DEFAULTS.map(def => {
+    const merged = { ...def, ...(storedByUrl[def.url] || {}) };
+    return { ...merged, wdThreshold: normalizeWdThresholdForUrl(def.url, merged.wdThreshold) };
+  });
 
   const firstEnabled = currentFaucets.findIndex(f => f.active !== false);
   selectedFaucetIndex = firstEnabled >= 0 ? firstEnabled : 0;
@@ -319,7 +380,7 @@ function renderConfigForSite(index) {
         </div>
         <div class="cfg-grid two-col">
           <div class="cfg-row">
-            <label for="fwdth">${tipLabel("WD Threshold", "Single threshold used for both dice stop and withdrawal decision.")}</label>
+            <label for="fwdth">${tipLabel("WD Threshold", "Single threshold for dice stop + withdrawal. Defaults are prefilled to roughly $1 coin-equivalent per faucet.")}</label>
             <input type="number" id="fwdth" value="${escapeAttr(f.wdThreshold || "")}" placeholder="e.g. 0.001" step="any" min="0" />
           </div>
           <div class="cfg-row">
@@ -427,7 +488,9 @@ saveBtn.addEventListener("click", async function() {
     username: i === selectedIdx ? username : f.username,
     password: i === selectedIdx ? password : f.password,
     wdEnabled: i === selectedIdx ? wdEnabled : f.wdEnabled,
-    wdThreshold: i === selectedIdx ? wdThreshold : f.wdThreshold,
+    wdThreshold: i === selectedIdx
+      ? normalizeWdThresholdForUrl(f.url, wdThreshold)
+      : normalizeWdThresholdForUrl(f.url, f.wdThreshold),
     wdAddress: i === selectedIdx ? wdAddress : f.wdAddress,
     dbEnabled: i === selectedIdx ? dbEnabled : f.dbEnabled,
     dbChance: i === selectedIdx ? dbChance : f.dbChance,

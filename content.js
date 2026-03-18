@@ -24,6 +24,18 @@ const NATIVE_CLICK_MIN_INTERVAL_MS = 900;
 const DICE_FIXED_MULTIPLIER = 2.0;
 const MIN_STARTING_BALANCE_BET_FRACTION = 0.10;
 const PHASE_HEARTBEAT_INTERVAL_MS = 15000;
+const FAUCET_HANG_TO_DICE_TIMEOUT_MS = 60 * 1000;
+const RANDOM_14_CHANCE_PERCENT = 14;
+const RANDOM_14_MIN_BET_INTERVAL = 5;
+const RANDOM_14_MAX_BET_INTERVAL = 20;
+const DEFAULT_USD1_WD_THRESHOLD_BY_HOST = Object.freeze({
+  "litepick.io": "0.01",
+  "dogepick.io": "6",
+  "solpick.io": "0.0065",
+  "bnbpick.io": "0.0018",
+  "tronpick.io": "8",
+  "polpick.io": "2"
+});
 
 let lastNativeClickAt = 0;
 let lastPhaseHeartbeatAt = 0;
@@ -48,6 +60,30 @@ function sameHost(url1, url2) {
 // Generate random delay between 15-60 seconds to avoid detection
 function randomDelay() {
   return RANDOM_DELAY_MIN_MS + Math.random() * (RANDOM_DELAY_MAX_MS - RANDOM_DELAY_MIN_MS);
+}
+
+function randomIntInclusive(min, max) {
+  const safeMin = Math.ceil(Math.min(min, max));
+  const safeMax = Math.floor(Math.max(min, max));
+  return Math.floor(Math.random() * (safeMax - safeMin + 1)) + safeMin;
+}
+
+function normalizeHost(host) {
+  return String(host || "").replace(/^www\./i, "").toLowerCase();
+}
+
+function getUsdOneWdThresholdForHost(host) {
+  const fallback = DEFAULT_USD1_WD_THRESHOLD_BY_HOST[normalizeHost(host)] || "1";
+  const parsed = parseFloat(fallback);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function getDicePageUrl() {
+  try {
+    return new URL(location.href).origin + "/dice.php";
+  } catch {
+    return "/dice.php";
+  }
 }
 
 function sendDone(balance)   { chrome.runtime.sendMessage({ type: "faucet-done",   balance }); }
@@ -110,6 +146,29 @@ function isFaucetPage()   { return location.pathname.includes("faucet.php"); }
 function isWithdrawPage() { return /withdraw/i.test(location.pathname); }
 function isDicebetPage()  { return location.pathname.includes("dice.php") || /dice|dicebet/i.test(location.pathname); }
 function hasLoginForm()   { return !!document.querySelector('input[type="password"]'); }
+
+function startDiceHangWatchdog(diceEnabled) {
+  if (!diceEnabled) return () => {};
+
+  let active = true;
+  const timerId = setTimeout(async () => {
+    if (!active) return;
+    if (!isFaucetPage() || isDicebetPage() || isWithdrawPage()) return;
+
+    const pluginTab = await isPluginTab();
+    if (!pluginTab) return;
+
+    const diceUrl = getDicePageUrl();
+    log(`Faucet flow exceeded ${(FAUCET_HANG_TO_DICE_TIMEOUT_MS / 1000).toFixed(0)}s — forcing DiceBet load: ${diceUrl}`);
+    sendPhaseHeartbeat("faucet-hang-timeout-to-dice");
+    window.location.href = diceUrl;
+  }, FAUCET_HANG_TO_DICE_TIMEOUT_MS);
+
+  return () => {
+    active = false;
+    clearTimeout(timerId);
+  };
+}
 
 // ── Credentials from storage ──────────────────────────────────────────────────
 
@@ -645,115 +704,121 @@ async function runLogin() {
 async function runFaucet() {
   log("Faucet page:", location.href);
 
+  const dbConfig = await getDicebetConfig();
+  const stopDiceHangWatchdog = startDiceHangWatchdog(dbConfig.enabled);
+
   await sleep(2000);
 
-  // ── Normal claim first ──
-  scrollToBottom();
-  await sleep(1000);
-  scrollToBottom();
+  try {
+    // ── Normal claim first ──
+    scrollToBottom();
+    await sleep(1000);
+    scrollToBottom();
 
-  // Check if captcha is even present
-  const hasCaptcha = hasCaptchaWidget();
-  log("Captcha widget present:", hasCaptcha);
+    // Check if captcha is even present
+    const hasCaptcha = hasCaptchaWidget();
+    log("Captcha widget present:", hasCaptcha);
 
-  if (hasCaptcha) {
-    log("Captcha detected on faucet page, requesting tab focus...");
-    chrome.runtime.sendMessage({ type: "focus-tab" });
-    await sleep(500); // Give tab time to focus
+    if (hasCaptcha) {
+      log("Captcha detected on faucet page, requesting tab focus...");
+      chrome.runtime.sendMessage({ type: "focus-tab" });
+      await sleep(500); // Give tab time to focus
 
-    // Try initial click and let waitForCaptchaToken handle retries
-    log("Attempting initial captcha widget click...");
-    const clicked = tryClickCaptchaWidget();
-    if (clicked) {
-      log("Initial captcha click succeeded, waiting for response...");
-      await sleep(CAPTCHA_SETTLE_MS);
+      // Try initial click and let waitForCaptchaToken handle retries
+      log("Attempting initial captcha widget click...");
+      const clicked = tryClickCaptchaWidget();
+      if (clicked) {
+        log("Initial captcha click succeeded, waiting for response...");
+        await sleep(CAPTCHA_SETTLE_MS);
+      } else {
+        log("Initial captcha click failed, will retry in waitForCaptchaToken...");
+      }
+
+      const token = await waitForCaptchaToken(MAX_WAIT_MS);
+      if (!token) {
+        log("✗ Captcha timeout on faucet page");
+        sendError("turnstile-timeout");
+        return;
+      }
+      log("✓ Captcha resolved");
     } else {
-      log("Initial captcha click failed, will retry in waitForCaptchaToken...");
+      log("No captcha detected — proceeding directly to claim");
     }
 
-    const token = await waitForCaptchaToken(MAX_WAIT_MS);
-    if (!token) { 
-      log("✗ Captcha timeout on faucet page");
-      sendError("turnstile-timeout"); 
-      return; 
-    }
-    log("✓ Captcha resolved");
-  } else {
-    log("No captcha detected — proceeding directly to claim");
-  }
-
-  const claimKeywords = ["claim", "collect", "roll", "submit", "get"];
-  const selectors = [
-    'button[type="submit"]', 'input[type="submit"]',
-    'button.btn-claim', 'button.claim', '#claim',
-    'button[onclick*="claim" i]', 'button[onclick*="roll" i]',
-    'button[class*="claim"]', 'button[class*="submit"]',
-    'a[onclick*="claim" i]', 'a[onclick*="roll" i]',
-    'input[value*="claim" i]', 'input[value*="roll" i]',
-    'button', 'input[type="button"]'
-  ];
-  let btn = null;
-  outer: for (const sel of selectors) {
-    const elements = document.querySelectorAll(sel);
-    log(`Searching with selector "${sel}" — found ${elements.length} element(s)`);
-    for (const el of elements) {
-      if (!el.offsetParent) continue; // skip hidden elements
-      const text = (el.textContent || el.value || "").trim().toLowerCase();
-      if (claimKeywords.some(k => text.includes(k))) { 
-        log(`✓ Matched selector "${sel}" with text "${text}"`);
-        btn = el; 
-        break outer; 
+    const claimKeywords = ["claim", "collect", "roll", "submit", "get"];
+    const selectors = [
+      'button[type="submit"]', 'input[type="submit"]',
+      'button.btn-claim', 'button.claim', '#claim',
+      'button[onclick*="claim" i]', 'button[onclick*="roll" i]',
+      'button[class*="claim"]', 'button[class*="submit"]',
+      'a[onclick*="claim" i]', 'a[onclick*="roll" i]',
+      'input[value*="claim" i]', 'input[value*="roll" i]',
+      'button', 'input[type="button"]'
+    ];
+    let btn = null;
+    outer: for (const sel of selectors) {
+      const elements = document.querySelectorAll(sel);
+      log(`Searching with selector "${sel}" — found ${elements.length} element(s)`);
+      for (const el of elements) {
+        if (!el.offsetParent) continue; // skip hidden elements
+        const text = (el.textContent || el.value || "").trim().toLowerCase();
+        if (claimKeywords.some(k => text.includes(k))) {
+          log(`✓ Matched selector "${sel}" with text "${text}"`);
+          btn = el;
+          break outer;
+        }
       }
     }
+
+    if (!btn) {
+      log("WARNING: No claim button found with keyword matching");
+      log("Trying fallback: any visible submit button");
+      btn = document.querySelector('button[type="submit"], input[type="submit"]');
+      if (btn) log(`Found fallback button: ${btn.textContent?.trim() || btn.value}`);
+    }
+
+    // Safety: don't submit a login form from the faucet flow
+    if (!btn) {
+      log("ERROR: No claim button found at all. Page structure might be different.");
+      sendError("no-claim-button");
+      return;
+    }
+
+    if (hasLoginForm()) {
+      log("ERROR: Login form detected on faucet page. Aborting claim.");
+      sendError("login-form-detected");
+      return;
+    }
+
+    log("Clicking claim button:", btn.textContent?.trim() || btn.value);
+    btn.click();
+
+    await sleep(POST_CLAIM_WAIT_MS);
+
+    // ── Bonus faucet claims after normal claim ──
+    await claimBonusFaucets();
+
+    const balance = readBalance();
+    log("Balance after claim:", balance);
+
+    // Check if dicebet is enabled and if balance was successfully extracted
+    if (dbConfig.enabled && balance != null && balance > 0) {
+      const diceUrl = getDicePageUrl();
+      log(`DiceBet enabled, navigating to dice page: ${diceUrl}`);
+      window.location.href = diceUrl;
+      // Script continues via isPluginTab guard check in main()
+      return;
+    }
+
+    // Add random delay before reporting completion
+    const delay = randomDelay();
+    log(`Claim completed, waiting ${(delay/1000).toFixed(1)}s before next action`);
+    await sleep(delay);
+
+    sendDone(balance);
+  } finally {
+    stopDiceHangWatchdog();
   }
-  
-  if (!btn) {
-    log("WARNING: No claim button found with keyword matching");
-    log("Trying fallback: any visible submit button");
-    btn = document.querySelector('button[type="submit"], input[type="submit"]');
-    if (btn) log(`Found fallback button: ${btn.textContent?.trim() || btn.value}`);
-  }
-
-  // Safety: don't submit a login form from the faucet flow
-  if (!btn) { 
-    log("ERROR: No claim button found at all. Page structure might be different.");
-    sendError("no-claim-button"); 
-    return; 
-  }
-  
-  if (hasLoginForm()) { 
-    log("ERROR: Login form detected on faucet page. Aborting claim.");
-    sendError("login-form-detected"); 
-    return; 
-  }
-
-  log("Clicking claim button:", btn.textContent?.trim() || btn.value);
-  btn.click();
-
-  await sleep(POST_CLAIM_WAIT_MS);
-
-  // ── Bonus faucet claims after normal claim ──
-  await claimBonusFaucets();
-
-  const balance = readBalance();
-  log("Balance after claim:", balance);
-
-  // Check if dicebet is enabled and if balance was successfully extracted
-  const dbConfig = await getDicebetConfig();
-  if (dbConfig.enabled && balance != null && balance > 0) {
-    log("DiceBet enabled, attempting to navigate to dice page");
-    const diceUrl = new URL(location.href).origin + "/dice.php";
-    window.location.href = diceUrl;
-    // Script continues via isPluginTab guard check in main()
-    return;
-  }
-
-  // Add random delay before reporting completion
-  const delay = randomDelay();
-  log(`Claim completed, waiting ${(delay/1000).toFixed(1)}s before next action`);
-  await sleep(delay);
-
-  sendDone(balance);
 }
 
 // ── Bonus faucet loop ─────────────────────────────────────────────────────────
@@ -1260,7 +1325,8 @@ async function getDicebetConfig() {
     try { return new URL(f.url).hostname === location.hostname; } catch { return false; }
   });
   const parsedChance = parseFloat(faucet?.dbChance || "48.5");
-  const parsedThreshold = parseFloat(faucet?.wdThreshold || "0");
+  const parsedThreshold = parseFloat(faucet?.wdThreshold || "");
+  const fallbackThreshold = getUsdOneWdThresholdForHost(location.hostname);
   const rawStrategyConfig = faucet?.dbStrategyConfig && typeof faucet.dbStrategyConfig === "object"
     ? faucet.dbStrategyConfig
     : (faucet?.dbStrategy && typeof faucet.dbStrategy === "object" ? faucet.dbStrategy : {});
@@ -1269,7 +1335,7 @@ async function getDicebetConfig() {
     enabled: faucet?.dbEnabled === true,
     side: normalizeDiceSide(faucet?.dbSide || "higher"),
     chance: Number.isFinite(parsedChance) ? parsedChance : 48.5,
-    wdThreshold: Number.isFinite(parsedThreshold) ? parsedThreshold : 0,
+    wdThreshold: Number.isFinite(parsedThreshold) && parsedThreshold > 0 ? parsedThreshold : fallbackThreshold,
     strategyConfig: rawStrategyConfig
   };
 }
@@ -1458,6 +1524,9 @@ async function runDicebet() {
   const chance = clampNumber(toFiniteNumber(config.chance, 48.5), 1, 99);
   const side = normalizeDiceSide(config.side);
   const strategy = new CombinedHighRollerStrategy(config.strategyConfig, log);
+  let settledBetCount = 0;
+  let nextRandom14BetAt = randomIntInclusive(RANDOM_14_MIN_BET_INTERVAL, RANDOM_14_MAX_BET_INTERVAL);
+  log(`Random 14% rounds active every ${RANDOM_14_MIN_BET_INTERVAL}-${RANDOM_14_MAX_BET_INTERVAL} settled bets (first at #${nextRandom14BetAt})`);
 
   for (let attempt = 0; attempt < 5; attempt++) {
     const chanceInput = findDicebetChanceInput();
@@ -1519,9 +1588,6 @@ async function runDicebet() {
       return false;
     }
 
-    applyDicebetTargets(chance, DICE_FIXED_MULTIPLIER);
-    applyDicebetSide(side);
-
     const amountInput = findDicebetAmountInput();
     if (!amountInput) {
       log("ERROR: Cannot find bet amount input");
@@ -1537,11 +1603,18 @@ async function runDicebet() {
       return false;
     }
 
+    const upcomingBetNumber = settledBetCount + 1;
+    const isRandom14Round = upcomingBetNumber >= nextRandom14BetAt;
+    const activeChance = isRandom14Round ? RANDOM_14_CHANCE_PERCENT : chance;
+
+    applyDicebetTargets(activeChance, DICE_FIXED_MULTIPLIER);
+    applyDicebetSide(side);
+
     setDicebetInputValue(amountInput, nextBet.toFixed(8));
     if (typeof window.change_bet_amount === "function") {
       window.change_bet_amount();
     }
-    log(`Placing bet ${nextBet.toFixed(8)} | mode=${strategy.mode} | streak=${strategy.win_streak} | ladderStep=${strategy.ladder_step + 1}`);
+    log(`Placing bet ${nextBet.toFixed(8)} | chance=${activeChance.toFixed(2)}%${isRandom14Round ? " [RANDOM-14]" : ""} | mode=${strategy.mode} | streak=${strategy.win_streak} | ladderStep=${strategy.ladder_step + 1}`);
 
     const readyToBet = await waitForDicebetIdle(120000);
     if (!readyToBet) {
@@ -1574,6 +1647,11 @@ async function runDicebet() {
 
     const win = balanceAfter > balanceBefore;
     strategy.on_roll_result(win);
+    settledBetCount += 1;
+    if (isRandom14Round) {
+      nextRandom14BetAt = settledBetCount + randomIntInclusive(RANDOM_14_MIN_BET_INTERVAL, RANDOM_14_MAX_BET_INTERVAL);
+      log(`Random 14% round executed at settled bet #${settledBetCount}; next random-14 round at #${nextRandom14BetAt}`);
+    }
     log(`Round ${round} result: ${win ? "WIN" : "LOSS"} | bankroll=${balanceAfter.toFixed(8)} | mode=${strategy.mode}`);
 
     if (balanceAfter >= threshold) {

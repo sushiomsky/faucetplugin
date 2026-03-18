@@ -16,16 +16,66 @@ function getDefaultHighRollerConfig() {
   return { ...DEFAULT_HIGH_ROLLER_CONFIG };
 }
 
+const DEFAULT_USD1_WD_THRESHOLD_BY_HOST = Object.freeze({
+  "litepick.io": "0.01",
+  "dogepick.io": "6",
+  "solpick.io": "0.0065",
+  "bnbpick.io": "0.0018",
+  "tronpick.io": "8",
+  "polpick.io": "2"
+});
+
+const LEGACY_WD_THRESHOLD_BY_HOST = Object.freeze({
+  "litepick.io": "0.005",
+  "dogepick.io": "10.0",
+  "solpick.io": "0.0025",
+  "bnbpick.io": "0.005",
+  "tronpick.io": "7.5",
+  "polpick.io": "1.5"
+});
+
+function normalizeHost(host) {
+  return String(host || "").replace(/^www\./i, "").toLowerCase();
+}
+
+function getDefaultWdThresholdForUrl(url) {
+  try {
+    const host = normalizeHost(new URL(url).hostname);
+    return DEFAULT_USD1_WD_THRESHOLD_BY_HOST[host] || "1";
+  } catch {
+    return "1";
+  }
+}
+
+function normalizeWdThresholdForUrl(url, rawThreshold) {
+  const fallback = getDefaultWdThresholdForUrl(url);
+  const parsed = parseFloat(rawThreshold);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+
+  let host = "";
+  try {
+    host = normalizeHost(new URL(url).hostname);
+  } catch {}
+
+  const legacyRaw = LEGACY_WD_THRESHOLD_BY_HOST[host];
+  const legacyParsed = parseFloat(legacyRaw);
+  if (Number.isFinite(legacyParsed) && Math.abs(parsed - legacyParsed) < 1e-12) {
+    return fallback;
+  }
+
+  return String(rawThreshold).trim();
+}
+
 // Multi-site configuration: all enabled faucets are queued sequentially
 const DEFAULT_SETTINGS = {
   enabled: true,
   faucets: [
-    { url: "https://litepick.io/faucet.php",  label: "litepick",  active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: "0.005",  wdAddress: "MWzkbmBnTzyauvgGudXwnDq18PLU9NPwAD", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-    { url: "https://dogepick.io/faucet.php",  label: "dogepick",  active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: "10.0",   wdAddress: "DFWaPscZ9LZ6W1ZP3Cj17zBbgop2FeNweE", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-    { url: "https://solpick.io/faucet.php",   label: "solpick",   active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: "0.0025", wdAddress: "7DjswfVdL8vX6xA2Wy1Vr6MEZQT1nTWkrL9U2taq9GhZ", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-    { url: "https://bnbpick.io/faucet.php",   label: "bnbpick",   active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: "0.005",  wdAddress: "0x05CF5E732c2c2a4C9aF1994DFC5878038cE37f7B", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-    { url: "https://tronpick.io/faucet.php",  label: "tronpick",  active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: "7.5",    wdAddress: "TAVvoGKqQqZpM4YBccJ5wyftPYRBKKyjEv", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-    { url: "https://polpick.io/faucet.php",   label: "polpick",   active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: "1.5",    wdAddress: "0x05CF5E732c2c2a4C9aF1994DFC5878038cE37f7B", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() }
+    { url: "https://litepick.io/faucet.php",  label: "litepick",  active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://litepick.io/faucet.php"), wdAddress: "MWzkbmBnTzyauvgGudXwnDq18PLU9NPwAD", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
+    { url: "https://dogepick.io/faucet.php",  label: "dogepick",  active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://dogepick.io/faucet.php"), wdAddress: "DFWaPscZ9LZ6W1ZP3Cj17zBbgop2FeNweE", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
+    { url: "https://solpick.io/faucet.php",   label: "solpick",   active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://solpick.io/faucet.php"), wdAddress: "7DjswfVdL8vX6xA2Wy1Vr6MEZQT1nTWkrL9U2taq9GhZ", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
+    { url: "https://bnbpick.io/faucet.php",   label: "bnbpick",   active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://bnbpick.io/faucet.php"), wdAddress: "0x05CF5E732c2c2a4C9aF1994DFC5878038cE37f7B", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
+    { url: "https://tronpick.io/faucet.php",  label: "tronpick",  active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://tronpick.io/faucet.php"), wdAddress: "TAVvoGKqQqZpM4YBccJ5wyftPYRBKKyjEv", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
+    { url: "https://polpick.io/faucet.php",   label: "polpick",   active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://polpick.io/faucet.php"), wdAddress: "0x05CF5E732c2c2a4C9aF1994DFC5878038cE37f7B", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() }
   ]
 };
 
@@ -38,10 +88,10 @@ async function getSettings() {
   const storedByUrl = {};
   for (const f of storedFaucets) { if (f.url) storedByUrl[f.url] = f; }
   
-  const faucets = DEFAULT_SETTINGS.faucets.map(def => ({
-    ...def,
-    ...(storedByUrl[def.url] || {})
-  }));
+  const faucets = DEFAULT_SETTINGS.faucets.map(def => {
+    const merged = { ...def, ...(storedByUrl[def.url] || {}) };
+    return { ...merged, wdThreshold: normalizeWdThresholdForUrl(def.url, merged.wdThreshold) };
+  });
   
   return { ...DEFAULT_SETTINGS, ...s, faucets };
 }
@@ -107,13 +157,15 @@ async function checkAndRun(forceAll = false) {
   const s = await getSettings();
   if (!s.enabled) {
     console.log("[Faucet] Plugin disabled");
+    await chrome.storage.local.set({ running: false });
     return;
   }
 
-  const state = await chrome.storage.local.get(["claimHistory", "activeTabs", "claimQueue"]);
+  const state = await chrome.storage.local.get(["claimHistory", "activeTabs", "claimQueue", "running"]);
   const claimHistory = state.claimHistory || {};
   const activeTabs = state.activeTabs || {};
   const claimQueue = Array.isArray(state.claimQueue) ? state.claimQueue : [];
+  const schedulerRunning = state.running === true;
   const now = Date.now();
 
   console.log("[Faucet] Checking faucets...", s.faucets.length, "configured");
@@ -270,7 +322,7 @@ async function checkAndRun(forceAll = false) {
         console.error(`[Faucet] ✗ You must grant permission at chrome://extensions → Details → Permissions`);
       }
       claimQueue.push(nextUrl); // re-queue on error
-      await chrome.storage.local.set({ activeTabs, claimQueue, running: Object.keys(activeTabs).length > 0 });
+      await chrome.storage.local.set({ activeTabs, claimQueue, running: true });
     }
     return;
   }
@@ -279,17 +331,17 @@ async function checkAndRun(forceAll = false) {
     console.log(`[Faucet] Queue has ${claimQueue.length} items waiting for current claim to finish`);
   }
 
-  if (stateDirty || claimQueue.length > 0) {
-    await chrome.storage.local.set({ activeTabs, claimQueue, running: Object.keys(activeTabs).length > 0 });
+  if (stateDirty || claimQueue.length > 0 || !schedulerRunning) {
+    await chrome.storage.local.set({ activeTabs, claimQueue, running: true });
   }
 }
 
 // ── Close tab + update running state ─────────────────────────────────────────
 
 async function closeTab(tabId) {
-  const { activeTabs = {} } = await chrome.storage.local.get("activeTabs");
+  const { activeTabs = {}, settings = {} } = await chrome.storage.local.get(["activeTabs", "settings"]);
   delete activeTabs[tabId];
-  const running = Object.keys(activeTabs).length > 0;
+  const running = settings.enabled !== false;
   await chrome.storage.local.set({ activeTabs, running });
   try { await chrome.tabs.remove(tabId); } catch (_) {}
   console.log("[Faucet] Tab", tabId, "closed. Remaining active:", Object.keys(activeTabs).length);
@@ -421,7 +473,11 @@ async function handleMessage(msg, sender) {
     const old = await getSettings();
     await chrome.storage.local.set({ settings: { ...old, ...msg.settings } });
     const s = await getSettings();
-    if (s.enabled) ensureTickAlarm();
+    if (s.enabled) {
+      await chrome.storage.local.set({ running: true });
+      ensureTickAlarm();
+      requestCheckAndRun();
+    }
     else { cancelAlarm(); await chrome.storage.local.set({ running: false }); }
     console.log("[Faucet] Settings saved");
     return;
@@ -432,15 +488,17 @@ async function handleMessage(msg, sender) {
     const defaultSettings = {
       enabled: true,
       faucets: [
-        { url: "https://litepick.io/faucet.php",  label: "litepick",  active: true, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: "0.005",  wdAddress: "MWzkbmBnTzyauvgGudXwnDq18PLU9NPwAD", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-        { url: "https://dogepick.io/faucet.php",  label: "dogepick",  active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: "10.0",   wdAddress: "DFWaPscZ9LZ6W1ZP3Cj17zBbgop2FeNweE", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-        { url: "https://solpick.io/faucet.php",   label: "solpick",   active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: "0.0025", wdAddress: "7DjswfVdL8vX6xA2Wy1Vr6MEZQT1nTWkrL9U2taq9GhZ", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-        { url: "https://bnbpick.io/faucet.php",   label: "bnbpick",   active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: "0.005",  wdAddress: "0x05CF5E732c2c2a4C9aF1994DFC5878038cE37f7B", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-        { url: "https://tronpick.io/faucet.php",  label: "tronpick",  active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: "7.5",    wdAddress: "TAVvoGKqQqZpM4YBccJ5wyftPYRBKKyjEv", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-        { url: "https://polpick.io/faucet.php",   label: "polpick",   active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: "1.5",    wdAddress: "0x05CF5E732c2c2a4C9aF1994DFC5878038cE37f7B", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() }
+        { url: "https://litepick.io/faucet.php",  label: "litepick",  active: true, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://litepick.io/faucet.php"), wdAddress: "MWzkbmBnTzyauvgGudXwnDq18PLU9NPwAD", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
+        { url: "https://dogepick.io/faucet.php",  label: "dogepick",  active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://dogepick.io/faucet.php"), wdAddress: "DFWaPscZ9LZ6W1ZP3Cj17zBbgop2FeNweE", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
+        { url: "https://solpick.io/faucet.php",   label: "solpick",   active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://solpick.io/faucet.php"), wdAddress: "7DjswfVdL8vX6xA2Wy1Vr6MEZQT1nTWkrL9U2taq9GhZ", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
+        { url: "https://bnbpick.io/faucet.php",   label: "bnbpick",   active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://bnbpick.io/faucet.php"), wdAddress: "0x05CF5E732c2c2a4C9aF1994DFC5878038cE37f7B", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
+        { url: "https://tronpick.io/faucet.php",  label: "tronpick",  active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://tronpick.io/faucet.php"), wdAddress: "TAVvoGKqQqZpM4YBccJ5wyftPYRBKKyjEv", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
+        { url: "https://polpick.io/faucet.php",   label: "polpick",   active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://polpick.io/faucet.php"), wdAddress: "0x05CF5E732c2c2a4C9aF1994DFC5878038cE37f7B", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() }
       ]
     };
-    await chrome.storage.local.set({ settings: defaultSettings, claimHistory: {}, claimQueue: [], activeTabs: {}, running: false });
+    await chrome.storage.local.set({ settings: defaultSettings, claimHistory: {}, claimQueue: [], activeTabs: {}, running: true });
+    ensureTickAlarm();
+    requestCheckAndRun(true);
     console.log("[Faucet] All sites reset to enabled with cleared history");
     return;
   }
@@ -535,15 +593,15 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 chrome.runtime.onInstalled.addListener(async () => {
   const stored = await chrome.storage.local.get("settings");
   if (!stored.settings) await chrome.storage.local.set({ settings: DEFAULT_SETTINGS });
-  // Clear any stale state from previous session
-  await chrome.storage.local.set({ activeTabs: {}, running: false });
   const s = await getSettings();
+  // Clear any stale state from previous session
+  await chrome.storage.local.set({ activeTabs: {}, running: s.enabled !== false });
   if (s.enabled) { ensureTickAlarm(); requestCheckAndRun(true); }
 });
 
 chrome.runtime.onStartup.addListener(async () => {
-  await chrome.storage.local.set({ activeTabs: {}, running: false });
   const s = await getSettings();
+  await chrome.storage.local.set({ activeTabs: {}, running: s.enabled !== false });
   if (s.enabled) { ensureTickAlarm(); requestCheckAndRun(); }
 });
 
