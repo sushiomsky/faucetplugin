@@ -148,126 +148,10 @@ const faucetConfigBlock = document.getElementById("faucetConfigBlock");
 const saveBtn    = document.getElementById("saveBtn");
 const saveMsg    = document.getElementById("saveMsg");
 
-const DEFAULT_DB_SIDE = "higher";
-const DEFAULT_DB_STRATEGY = "combined-high-roller";
-const DEFAULT_HIGH_ROLLER_CONFIG = Object.freeze({
-  base_bet_fraction: 0.10,
-  max_bet_fraction: 0.40,
-  max_ladder_depth: 5,
-  history_window: 10,
-  streak_trigger: 1,
-  volatility_trigger: 4
-});
-
-function toFiniteNumber(value, fallback) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function clampNumber(value, min, max) {
-  return Math.min(Math.max(value, min), max);
-}
-
-function normalizeDiceSide(side) {
-  return String(side || "").toLowerCase() === "lower" ? "lower" : "higher";
-}
-
-function getDefaultHighRollerConfig() {
-  return { ...DEFAULT_HIGH_ROLLER_CONFIG };
-}
-
-const DEFAULT_USD1_WD_THRESHOLD_BY_HOST = Object.freeze({
-  "litepick.io": "0.01",
-  "dogepick.io": "6",
-  "solpick.io": "0.0065",
-  "bnbpick.io": "0.0018",
-  "tronpick.io": "8",
-  "polpick.io": "2"
-});
-
-const LEGACY_WD_THRESHOLD_BY_HOST = Object.freeze({
-  "litepick.io": "0.005",
-  "dogepick.io": "10.0",
-  "solpick.io": "0.0025",
-  "bnbpick.io": "0.005",
-  "tronpick.io": "7.5",
-  "polpick.io": "1.5"
-});
-
-function normalizeHost(host) {
-  return String(host || "").replace(/^www\./i, "").toLowerCase();
-}
-
-function getDefaultWdThresholdForUrl(url) {
-  try {
-    const host = normalizeHost(new URL(url).hostname);
-    return DEFAULT_USD1_WD_THRESHOLD_BY_HOST[host] || "1";
-  } catch {
-    return "1";
-  }
-}
-
-function normalizeWdThresholdForUrl(url, rawThreshold) {
-  const fallback = getDefaultWdThresholdForUrl(url);
-  const parsed = parseFloat(rawThreshold);
-  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
-
-  let host = "";
-  try {
-    host = normalizeHost(new URL(url).hostname);
-  } catch {}
-
-  const legacyRaw = LEGACY_WD_THRESHOLD_BY_HOST[host];
-  const legacyParsed = parseFloat(legacyRaw);
-  if (Number.isFinite(legacyParsed) && Math.abs(parsed - legacyParsed) < 1e-12) {
-    return fallback;
-  }
-
-  return String(rawThreshold).trim();
-}
-
-function normalizeHighRollerConfig(rawConfig = {}) {
-  const cfg = rawConfig && typeof rawConfig === "object" ? rawConfig : {};
-  const base_bet_fraction = clampNumber(
-    toFiniteNumber(cfg.base_bet_fraction, DEFAULT_HIGH_ROLLER_CONFIG.base_bet_fraction),
-    0.00000001,
-    0.95
-  );
-  const max_bet_fraction = clampNumber(
-    toFiniteNumber(cfg.max_bet_fraction, DEFAULT_HIGH_ROLLER_CONFIG.max_bet_fraction),
-    base_bet_fraction,
-    1
-  );
-  const max_ladder_depth = clampNumber(
-    Math.round(toFiniteNumber(cfg.max_ladder_depth, DEFAULT_HIGH_ROLLER_CONFIG.max_ladder_depth)),
-    1,
-    10
-  );
-  const history_window = clampNumber(
-    Math.round(toFiniteNumber(cfg.history_window, DEFAULT_HIGH_ROLLER_CONFIG.history_window)),
-    1,
-    200
-  );
-  const streak_trigger = clampNumber(
-    Math.round(toFiniteNumber(cfg.streak_trigger, DEFAULT_HIGH_ROLLER_CONFIG.streak_trigger)),
-    1,
-    50
-  );
-  const volatility_trigger = clampNumber(
-    Math.round(toFiniteNumber(cfg.volatility_trigger, DEFAULT_HIGH_ROLLER_CONFIG.volatility_trigger)),
-    1,
-    history_window
-  );
-
-  return {
-    base_bet_fraction,
-    max_bet_fraction,
-    max_ladder_depth,
-    history_window,
-    streak_trigger,
-    volatility_trigger
-  };
-}
+// All shared constants and utility functions (normalizeHost, normalizeDbStrategy,
+// normalizeDbChance, normalizeDiceSide, getDefaultHighRollerConfig,
+// getDefaultWdThresholdForUrl, normalizeWdThresholdForUrl, normalizeHighRollerConfig,
+// toFiniteNumber, clampNumber, makeFaucetDefaults) are loaded from constants.js.
 
 function escapeAttr(value) {
   return String(value ?? "")
@@ -280,16 +164,6 @@ function escapeAttr(value) {
 function tipLabel(text, tooltip) {
   return `<span class="tip-label" title="${escapeAttr(tooltip)}">${text}<span class="tip-icon">ⓘ</span></span>`;
 }
-
-// Multi-site configuration: active faucets run sequentially
-const FAUCET_DEFAULTS = [
-  { url: "https://litepick.io/faucet.php",  label: "litepick",  active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://litepick.io/faucet.php"), wdAddress: "MWzkbmBnTzyauvgGudXwnDq18PLU9NPwAD", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-  { url: "https://dogepick.io/faucet.php",  label: "dogepick",  active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://dogepick.io/faucet.php"), wdAddress: "DFWaPscZ9LZ6W1ZP3Cj17zBbgop2FeNweE", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-  { url: "https://solpick.io/faucet.php",   label: "solpick",   active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://solpick.io/faucet.php"), wdAddress: "7DjswfVdL8vX6xA2Wy1Vr6MEZQT1nTWkrL9U2taq9GhZ", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-  { url: "https://bnbpick.io/faucet.php",   label: "bnbpick",   active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://bnbpick.io/faucet.php"), wdAddress: "0x05CF5E732c2c2a4C9aF1994DFC5878038cE37f7B", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-  { url: "https://tronpick.io/faucet.php",  label: "tronpick",  active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://tronpick.io/faucet.php"), wdAddress: "TAVvoGKqQqZpM4YBccJ5wyftPYRBKKyjEv", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-  { url: "https://polpick.io/faucet.php",   label: "polpick",   active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://polpick.io/faucet.php"), wdAddress: "0x05CF5E732c2c2a4C9aF1994DFC5878038cE37f7B", dbEnabled: false, dbChance: "50", dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() }
-];
 
 let currentFaucets = [];
 let selectedFaucetIndex = 0;
@@ -332,9 +206,17 @@ async function loadConfig() {
   const storedByUrl = {};
   for (const f of storedFaucets) { if (f.url) storedByUrl[f.url] = f; }
   
-  currentFaucets = FAUCET_DEFAULTS.map(def => {
+  currentFaucets = makeFaucetDefaults().map(def => {
     const merged = { ...def, ...(storedByUrl[def.url] || {}) };
-    return { ...merged, wdThreshold: normalizeWdThresholdForUrl(def.url, merged.wdThreshold) };
+    const dbEnabled = merged.dbEnabled === true;
+    const normalizedStrategy = normalizeDbStrategy(merged.dbStrategy, dbEnabled);
+    const normalizedChance = normalizeDbChance(merged.dbChance, normalizedStrategy);
+    return {
+      ...merged,
+      wdThreshold: normalizeWdThresholdForUrl(def.url, merged.wdThreshold),
+      dbStrategy: normalizedStrategy,
+      dbChance: normalizedChance
+    };
   });
 
   const firstEnabled = currentFaucets.findIndex(f => f.active !== false);
@@ -348,9 +230,8 @@ async function loadConfig() {
 function renderConfigForSite(index) {
   const f = currentFaucets[index];
   const dbSide = normalizeDiceSide(f.dbSide || DEFAULT_DB_SIDE);
-  const dbStrategy = f.dbStrategy === DEFAULT_DB_STRATEGY
-    ? f.dbStrategy
-    : DEFAULT_DB_STRATEGY;
+  const dbStrategy = normalizeDbStrategy(f.dbStrategy, f.dbEnabled === true);
+  const dbChance = normalizeDbChance(f.dbChance, dbStrategy);
   const strategyCfg = normalizeHighRollerConfig(f.dbStrategyConfig);
 
   faucetConfigBlock.innerHTML = `
@@ -380,7 +261,7 @@ function renderConfigForSite(index) {
         </div>
         <div class="cfg-grid two-col">
           <div class="cfg-row">
-            <label for="fwdth">${tipLabel("WD Threshold", "Single threshold for dice stop + withdrawal. Defaults are prefilled to roughly $1 coin-equivalent per faucet.")}</label>
+            <label for="fwdth">${tipLabel("WD Threshold", "Single threshold for dice stop + withdrawal. Defaults are prefilled to roughly $5 coin-equivalent per faucet.")}</label>
             <input type="number" id="fwdth" value="${escapeAttr(f.wdThreshold || "")}" placeholder="e.g. 0.001" step="any" min="0" />
           </div>
           <div class="cfg-row">
@@ -401,8 +282,8 @@ function renderConfigForSite(index) {
 
         <div class="cfg-grid three-col">
           <div class="cfg-row">
-            <label for="fdbc">${tipLabel("Bet Chance %", "Win probability target. Keep near 48.5-50 for 50/50 style.")}</label>
-            <input type="number" id="fdbc" value="${escapeAttr(f.dbChance || "50")}" step="1" min="1" max="99" />
+            <label for="fdbc">${tipLabel("Bet Chance %", "Editable chance for both strategies. Default for All-In strategy is 1%.")}</label>
+            <input type="number" id="fdbc" value="${escapeAttr(dbChance)}" step="0.01" min="0.01" max="99" />
           </div>
           <div class="cfg-row">
             <label for="fdbside">${tipLabel("Bet Side", "Higher = roll over target. Lower = roll under target.")}</label>
@@ -412,44 +293,64 @@ function renderConfigForSite(index) {
             </select>
           </div>
           <div class="cfg-row">
-            <label for="fdbstrategy">${tipLabel("Strategy", "Combined High-Roller mode-switching engine.")}</label>
+            <label for="fdbstrategy">${tipLabel("Strategy", "Default is All-In (default chance 1%): one all-in shot after claim, withdraw if hit.")}</label>
             <select id="fdbstrategy">
+              <option value="all-in-0.1" ${dbStrategy === "all-in-0.1" ? "selected" : ""}>All-In (Default)</option>
               <option value="combined-high-roller" ${dbStrategy === "combined-high-roller" ? "selected" : ""}>Combined High-Roller</option>
             </select>
           </div>
         </div>
 
-        <div class="cfg-subtitle">Combined High-Roller Options</div>
-        <div class="cfg-note" title="${escapeAttr("Bets never go below 10% of starting bankroll. If bankroll falls below that floor, the bot goes all-in.")}">Minimum bet floor: 10% of starting bankroll (all-in below floor).</div>
-        <div class="cfg-grid three-col">
-          <div class="cfg-row">
-            <label for="fdb_bbf">${tipLabel("Base Bet Fraction", "Default Kelly bet fraction. Aggressive default is 10%.")}</label>
-            <input type="number" id="fdb_bbf" value="${strategyCfg.base_bet_fraction}" step="0.01" min="0.0001" max="1" />
-          </div>
-          <div class="cfg-row">
-            <label for="fdb_mbf">${tipLabel("Max Bet Fraction", "Maximum allowed bet fraction per roll. Aggressive default is 40%.")}</label>
-            <input type="number" id="fdb_mbf" value="${strategyCfg.max_bet_fraction}" step="0.01" min="0.01" max="1" />
-          </div>
-          <div class="cfg-row">
-            <label for="fdb_mld">${tipLabel("Max Ladder Depth", "How many ladder steps can be climbed before resetting to Kelly mode.")}</label>
-            <input type="number" id="fdb_mld" value="${strategyCfg.max_ladder_depth}" step="1" min="1" max="10" />
-          </div>
-          <div class="cfg-row">
-            <label for="fdb_hw">${tipLabel("History Window", "Number of recent rolls used to detect volatility.")}</label>
-            <input type="number" id="fdb_hw" value="${strategyCfg.history_window}" step="1" min="1" max="200" />
-          </div>
-          <div class="cfg-row">
-            <label for="fdb_st">${tipLabel("Streak Trigger", "Consecutive wins needed to enter Streak Harvester mode. Aggressive default is 1.")}</label>
-            <input type="number" id="fdb_st" value="${strategyCfg.streak_trigger}" step="1" min="1" max="50" />
-          </div>
-          <div class="cfg-row">
-            <label for="fdb_vt">${tipLabel("Volatility Trigger", "Minimum win/loss imbalance in history window to enter Breakout mode.")}</label>
-            <input type="number" id="fdb_vt" value="${strategyCfg.volatility_trigger}" step="1" min="1" max="200" />
+        <div id="allInOptions" style="${dbStrategy === DICE_STRATEGY_ALL_IN_001 ? "" : "display:none;"}">
+          <div class="cfg-subtitle">All-In Options</div>
+          <div class="cfg-note">All-In places one bet using your selected chance and side, then proceeds to withdrawal only if threshold is reached.</div>
+        </div>
+
+        <div id="highRollerOptions" style="${dbStrategy === DICE_STRATEGY_COMBINED_HIGH_ROLLER ? "" : "display:none;"}">
+          <div class="cfg-subtitle">Combined High-Roller Options</div>
+          <div class="cfg-note" title="${escapeAttr("Bets never go below 10% of starting bankroll. If bankroll falls below that floor, the bot goes all-in.")}">Minimum bet floor: 10% of starting bankroll (all-in below floor).</div>
+          <div class="cfg-grid three-col">
+            <div class="cfg-row">
+              <label for="fdb_bbf">${tipLabel("Base Bet Fraction", "Default Kelly bet fraction. Aggressive default is 10%.")}</label>
+              <input type="number" id="fdb_bbf" value="${strategyCfg.base_bet_fraction}" step="0.01" min="0.0001" max="1" />
+            </div>
+            <div class="cfg-row">
+              <label for="fdb_mbf">${tipLabel("Max Bet Fraction", "Maximum allowed bet fraction per roll. Aggressive default is 40%.")}</label>
+              <input type="number" id="fdb_mbf" value="${strategyCfg.max_bet_fraction}" step="0.01" min="0.01" max="1" />
+            </div>
+            <div class="cfg-row">
+              <label for="fdb_mld">${tipLabel("Max Ladder Depth", "How many ladder steps can be climbed before resetting to Kelly mode.")}</label>
+              <input type="number" id="fdb_mld" value="${strategyCfg.max_ladder_depth}" step="1" min="1" max="10" />
+            </div>
+            <div class="cfg-row">
+              <label for="fdb_hw">${tipLabel("History Window", "Number of recent rolls used to detect volatility.")}</label>
+              <input type="number" id="fdb_hw" value="${strategyCfg.history_window}" step="1" min="1" max="200" />
+            </div>
+            <div class="cfg-row">
+              <label for="fdb_st">${tipLabel("Streak Trigger", "Consecutive wins needed to enter Streak Harvester mode. Aggressive default is 1.")}</label>
+              <input type="number" id="fdb_st" value="${strategyCfg.streak_trigger}" step="1" min="1" max="50" />
+            </div>
+            <div class="cfg-row">
+              <label for="fdb_vt">${tipLabel("Volatility Trigger", "Minimum win/loss imbalance in history window to enter Breakout mode.")}</label>
+              <input type="number" id="fdb_vt" value="${strategyCfg.volatility_trigger}" step="1" min="1" max="200" />
+            </div>
           </div>
         </div>
       </div>
     </div>
   `;
+
+  const strategySelect = faucetConfigBlock.querySelector("#fdbstrategy");
+  const allInOptions = faucetConfigBlock.querySelector("#allInOptions");
+  const highRollerOptions = faucetConfigBlock.querySelector("#highRollerOptions");
+  function toggleStrategyOptions() {
+    const selectedStrategy = normalizeDbStrategy(strategySelect?.value || DEFAULT_DB_STRATEGY, true);
+    const isHighRoller = selectedStrategy === DICE_STRATEGY_COMBINED_HIGH_ROLLER;
+    if (allInOptions) allInOptions.style.display = isHighRoller ? "none" : "";
+    if (highRollerOptions) highRollerOptions.style.display = isHighRoller ? "" : "none";
+  }
+  strategySelect?.addEventListener("change", toggleStrategyOptions);
+  toggleStrategyOptions();
 }
 
 saveBtn.addEventListener("click", async function() {
@@ -467,9 +368,11 @@ saveBtn.addEventListener("click", async function() {
   const wdThreshold = faucetConfigBlock.querySelector("#fwdth").value.trim();
   const wdAddress = faucetConfigBlock.querySelector("#fwdaddr").value.trim();
   const dbEnabled = faucetConfigBlock.querySelector("#fdb").checked;
-  const dbChance = faucetConfigBlock.querySelector("#fdbc").value.trim();
+  const dbChanceInput = faucetConfigBlock.querySelector("#fdbc").value.trim();
   const dbSide = normalizeDiceSide(faucetConfigBlock.querySelector("#fdbside")?.value || DEFAULT_DB_SIDE);
-  const dbStrategy = faucetConfigBlock.querySelector("#fdbstrategy")?.value || DEFAULT_DB_STRATEGY;
+  const dbStrategyRaw = faucetConfigBlock.querySelector("#fdbstrategy")?.value || DEFAULT_DB_STRATEGY;
+  const dbStrategy = normalizeDbStrategy(dbStrategyRaw, dbEnabled);
+  const dbChance = normalizeDbChance(dbChanceInput, dbStrategy);
   const dbStrategyConfig = normalizeHighRollerConfig({
     base_bet_fraction: faucetConfigBlock.querySelector("#fdb_bbf")?.value,
     max_bet_fraction: faucetConfigBlock.querySelector("#fdb_mbf")?.value,
@@ -492,10 +395,12 @@ saveBtn.addEventListener("click", async function() {
       ? normalizeWdThresholdForUrl(f.url, wdThreshold)
       : normalizeWdThresholdForUrl(f.url, f.wdThreshold),
     wdAddress: i === selectedIdx ? wdAddress : f.wdAddress,
-    dbEnabled: i === selectedIdx ? dbEnabled : f.dbEnabled,
-    dbChance: i === selectedIdx ? dbChance : f.dbChance,
+    dbEnabled: i === selectedIdx ? dbEnabled : (f.dbEnabled === true),
+    dbChance: i === selectedIdx
+      ? dbChance
+      : normalizeDbChance(f.dbChance, normalizeDbStrategy(f.dbStrategy, f.dbEnabled === true)),
     dbSide: i === selectedIdx ? dbSide : normalizeDiceSide(f.dbSide || DEFAULT_DB_SIDE),
-    dbStrategy: i === selectedIdx ? dbStrategy : (f.dbStrategy || DEFAULT_DB_STRATEGY),
+    dbStrategy: i === selectedIdx ? dbStrategy : normalizeDbStrategy(f.dbStrategy, f.dbEnabled === true),
     dbStrategyConfig: i === selectedIdx ? dbStrategyConfig : normalizeHighRollerConfig(f.dbStrategyConfig)
   }));
 
