@@ -218,12 +218,18 @@ async function checkAndRun(forceAll = false) {
     }
     const lastClaimed = claimHistory[f.url] || 0;
     const intervalMs  = (f.intervalMinutes || 61) * 60 * 1000;
-    const isDue       = forceAll || (now - lastClaimed) >= intervalMs;
+    
+    // Calculate random offset once per cycle or use a stored scheduled time
+    const minRand = (f.minRandomMinutes || 0) * 60 * 1000;
+    const maxRand = (f.maxRandomMinutes || 5) * 60 * 1000;
+    const randomOffset = Math.floor(Math.random() * (maxRand - minRand + 1)) + minRand;
+    
+    const isDue       = forceAll || (now - lastClaimed) >= (intervalMs + randomOffset);
     const isRunning   = Object.values(activeTabs).some(t => sameHost(t.faucetUrl, f.url));
     const isQueued    = claimQueue.some(url => sameHost(url, f.url));
-    const timeUntilDue = Math.max(0, (lastClaimed + intervalMs) - now);
+    const timeUntilDue = Math.max(0, (lastClaimed + intervalMs + randomOffset) - now);
     
-    console.log(`[Faucet] ${f.url} — isDue=${isDue}, isRunning=${isRunning}, isQueued=${isQueued}, nextIn=${(timeUntilDue/1000/60).toFixed(1)}min`);
+    console.log(`[Faucet] ${f.url} — isDue=${isDue}, isRunning=${isRunning}, isQueued=${isQueued}, nextIn=${(timeUntilDue/1000/60).toFixed(1)}min (+rand)`);
     
     if (isDue && !isRunning && !isQueued) {
       dueFaucets.push(f);
@@ -541,4 +547,160 @@ async function appendLog(entry) {
   const { activityLog = [] } = await chrome.storage.local.get("activityLog");
   activityLog.unshift(entry);
   await chrome.storage.local.set({ activityLog: activityLog.slice(0, 30) });
+}
+
+// ── Price fetcher (CoinGecko) ────────────────────────────────────────────────
+
+async function fetchPrices() {
+  try {
+    const ids = Object.values(CRYPTO_PRICE_IDS).join(",");
+    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP error ${resp.status}`);
+    const data = await resp.json();
+    
+    // Store with timestamp
+    await chrome.storage.local.set({ cryptoPrices: { data, ts: Date.now() } });
+    console.log("[Faucet] Crypto prices updated:", data);
+  } catch (err) {
+    console.warn("[Faucet] Failed to fetch crypto prices:", err.message);
+  }
+}
+
+// Periodically update prices (every 15 minutes)
+chrome.alarms.create("price-update", { periodInMinutes: 15 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === "price-update") fetchPrices();
+});
+fetchPrices(); // Initial fetch
+
+// ── Message handling (cont.) ─────────────────────────────────────────────────
+
+async function handleMessage(msg, sender) {
+  // ── Scraped minimum withdrawal ──
+  if (msg.type === "scraped-min-wd") {
+    const { minWdThresholds = {} } = await chrome.storage.local.get("minWdThresholds");
+    const host = hostKey(msg.url);
+    if (host && msg.value) {
+      minWdThresholds[host] = msg.value;
+      await chrome.storage.local.set({ minWdThresholds });
+      console.log(`[Faucet] Stored min threshold for ${host}: ${msg.value}`);
+    }
+    return;
+  }
+
+  // ── Popup messages (no tab) ──────────────────────────────────────────────
+  if (msg.type === "manual-run") {
+    // Reset claimHistory for all active faucets so they are treated as due
+    const { claimHistory = {} } = await chrome.storage.local.get("claimHistory");
+    const s = await getSettings();
+    for (const f of s.faucets) { if (f.active !== false) claimHistory[f.url] = 0; }
+    await chrome.storage.local.set({ claimHistory });
+    requestCheckAndRun(true);
+    return;
+  }
+
+  if (msg.type === "save-settings") {
+    const old = await getSettings();
+    await chrome.storage.local.set({ settings: { ...old, ...msg.settings } });
+    const s = await getSettings();
+    if (s.enabled) {
+      await chrome.storage.local.set({ running: true });
+      ensureTickAlarm();
+      requestCheckAndRun();
+    }
+    else { cancelAlarm(); await chrome.storage.local.set({ running: false }); }
+    console.log("[Faucet] Settings saved");
+    return;
+  }
+
+  if (msg.type === "reset-all-sites") {
+    // Reset to factory defaults with first site enabled, clear all runtime state
+    const faucets = makeFaucetDefaults();
+    faucets[0].active = true; // enable litepick as a starting point
+    const defaultSettings = { enabled: true, faucets };
+    await chrome.storage.local.set({ settings: defaultSettings, claimHistory: {}, claimQueue: [], activeTabs: {}, running: true });
+    ensureTickAlarm();
+    requestCheckAndRun(true);
+    console.log("[Faucet] All sites reset to enabled with cleared history");
+    return;
+  }
+
+  // ── Content-script messages (require a known tab) ────────────────────────
+  const tabId = sender.tab?.id;
+  if (!tabId) return;
+
+  const { activeTabs = {}, claimHistory = {} } = await chrome.storage.local.get(["activeTabs", "claimHistory"]);
+  const tabData = activeTabs[tabId];
+  if (!tabData) return; // not our tab
+
+  if (msg.type === "phase-heartbeat") {
+    activeTabs[tabId] = {
+      ...tabData,
+      phaseStartedAt: Date.now(),
+      lastHeartbeatAt: Date.now()
+    };
+    await chrome.storage.local.set({ activeTabs });
+    return;
+  }
+
+  const s   = await getSettings();
+  const cfg = s.faucets.find(f => sameHost(f.url, tabData.faucetUrl));
+
+  // ── faucet-done / faucet-error ────────────────────────────────────────────
+  if (msg.type === "faucet-done" || msg.type === "faucet-error") {
+    console.log("[Faucet]", tabData.faucetUrl, msg.type, msg.reason || "");
+    await appendLog({ url: tabData.faucetUrl, status: msg.type === "faucet-done" ? "ok" : "error", reason: msg.reason, balance: msg.balance, ts: Date.now() });
+
+    if (msg.type === "faucet-done" && msg.balance != null && cfg) {
+      // If dicebet was enabled, the balance already met wdThreshold in content.js
+      // So we should proceed with withdrawal regardless of wdThreshold
+      const isDicebetCompleted = cfg.dbEnabled === true;
+      
+      if (isDicebetCompleted) {
+        // Dicebet was enabled and succeeded, proceed to withdrawal
+        if (cfg.wdEnabled && cfg.wdAddress) {
+          activeTabs[tabId] = { ...tabData, phase: "withdraw", wdAddress: cfg.wdAddress, phaseStartedAt: Date.now() };
+          await chrome.storage.local.set({ activeTabs });
+          chrome.tabs.update(tabId, { url: getWithdrawUrl(cfg.url) });
+          return;
+        }
+      } else {
+        // Dicebet disabled, check regular withdrawal threshold
+        const threshold = parseFloat(cfg.wdThreshold);
+        if (!isNaN(threshold) && threshold > 0) {
+          if (cfg.wdEnabled && cfg.wdAddress && msg.balance >= threshold) {
+            // → withdraw
+            activeTabs[tabId] = { ...tabData, phase: "withdraw", wdAddress: cfg.wdAddress, phaseStartedAt: Date.now() };
+            await chrome.storage.local.set({ activeTabs });
+            chrome.tabs.update(tabId, { url: getWithdrawUrl(cfg.url) });
+            return;
+          }
+        }
+      }
+    }
+
+    if (cfg) claimHistory[cfg.url] = Date.now();
+    await chrome.storage.local.set({ claimHistory });
+    await closeTab(tabId);
+    
+    // Check for next due faucet in queue
+    console.log("[Faucet] Faucet claim complete, checking for next in queue");
+    await requestCheckAndRun();
+    return;
+  }
+
+  // ── withdraw-done / withdraw-error ────────────────────────────────────────
+  if (msg.type === "withdraw-done" || msg.type === "withdraw-error") {
+    console.log("[Faucet] Withdraw", msg.type);
+    await appendLog({ url: tabData.faucetUrl, status: msg.type === "withdraw-done" ? "wd-ok" : "wd-error", reason: msg.reason, ts: Date.now() });
+    if (cfg) claimHistory[cfg.url] = Date.now();
+    await chrome.storage.local.set({ claimHistory });
+    await closeTab(tabId);
+    
+    // Check for next due faucet in queue
+    console.log("[Faucet] Withdrawal complete, checking for next in queue");
+    await requestCheckAndRun();
+    return;
+  }
 }

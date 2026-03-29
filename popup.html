@@ -2,463 +2,355 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Faucet Auto-Claimer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Faucet Auto-Claimer Pro</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --bg: #0a0a12;
+      --panel: rgba(25, 25, 45, 0.7);
+      --accent: #f0b90b;
+      --accent-glow: rgba(240, 185, 11, 0.3);
+      --text: #ffffff;
+      --text-dim: #9aa0b8;
+      --status-ok: #00ff88;
+      --status-err: #ff4d4d;
+      --glass: rgba(255, 255, 255, 0.05);
+      --glass-border: rgba(255, 255, 255, 0.1);
+    }
+
     *, *::before, *::after { box-sizing: border-box; }
     body {
-      font-family: "Segoe UI", sans-serif;
-      width: 340px;
+      font-family: 'Outfit', sans-serif;
+      width: 380px;
       margin: 0;
-      background: #12121e;
-      color: #ddd;
+      background: var(--bg);
+      color: var(--text);
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(circle at 10% 20%, rgba(240, 185, 11, 0.05) 0%, transparent 20%),
+        radial-gradient(circle at 90% 80%, rgba(0, 255, 136, 0.05) 0%, transparent 20%);
     }
 
     /* ── Header ── */
     header {
+      padding: 20px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      background: #1c1c2e;
-      padding: 12px 14px;
-      border-bottom: 1px solid #2a2a45;
+      background: rgba(10, 10, 18, 0.8);
+      backdrop-filter: blur(10px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      border-bottom: 1px solid var(--glass-border);
     }
-    header h1 { margin: 0; font-size: 14px; color: #e0b03f; letter-spacing: .5px; }
-    header span { font-size: 11px; color: #666; }
+    header h1 { 
+      margin: 0; 
+      font-size: 18px; 
+      font-weight: 700;
+      background: linear-gradient(90deg, #f0b90b, #ffe580);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: -0.5px;
+    }
+    .header-status {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+    }
 
     /* ── Tabs ── */
     .tabs {
       display: flex;
-      background: #1c1c2e;
-      border-bottom: 1px solid #2a2a45;
+      gap: 10px;
+      padding: 10px 20px;
+      background: rgba(15, 15, 25, 0.5);
     }
     .tab {
       flex: 1;
-      padding: 8px 4px;
-      text-align: center;
-      font-size: 11px;
-      cursor: pointer;
-      color: #888;
-      border-bottom: 2px solid transparent;
-      transition: color .2s, border-color .2s;
-    }
-    .tab.active { color: #e0b03f; border-bottom-color: #e0b03f; }
-    .tab:hover:not(.active) { color: #bbb; }
-
-    /* ── Panels ── */
-    .panel { display: none; padding: 14px; }
-    .panel.active { display: block; }
-
-    /* ── Status panel ── */
-    .status-badge {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 12px;
-      border-radius: 6px;
-      background: #1c1c2e;
-      margin-bottom: 12px;
-    }
-    .dot {
-      width: 10px; height: 10px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-    .dot.green  { background: #4caf50; box-shadow: 0 0 6px #4caf5088; }
-    .dot.orange { background: #e0b03f; box-shadow: 0 0 6px #e0b03f88; }
-    .dot.red    { background: #e05050; box-shadow: 0 0 6px #e0505088; }
-    .dot.grey   { background: #555; }
-    #statusText { font-size: 12px; }
-
-    .next-run {
-      font-size: 11px;
-      color: #888;
-      margin-bottom: 12px;
-      text-align: center;
-    }
-
-    .site-rows { margin-bottom: 12px; }
-    .site-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 6px 10px;
-      background: #1c1c2e;
-      border-radius: 5px;
-      margin-bottom: 4px;
-      font-size: 12px;
-    }
-    .site-name { color: #ccc; }
-    .site-status { font-size: 11px; }
-    .site-status.ok    { color: #4caf50; }
-    .site-status.error { color: #e05050; }
-    .site-status.idle  { color: #555; }
-
-    .log-title { font-size: 11px; color: #666; margin-bottom: 6px; }
-    .log-list {
-      max-height: 110px;
-      overflow-y: auto;
-      font-size: 10px;
-      color: #666;
-    }
-    .log-entry { padding: 2px 0; border-bottom: 1px solid #1e1e30; }
-    .log-entry .ok    { color: #4caf50; }
-    .log-entry .error { color: #e05050; }
-
-    /* ── Buttons ── */
-    .btn {
-      width: 100%;
-      padding: 9px;
-      border: none;
-      border-radius: 5px;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: opacity .15s;
-      margin-bottom: 6px;
-    }
-    .btn:disabled { opacity: .45; cursor: default; }
-    .btn-primary  { background: #e0b03f; color: #12121e; }
-    .btn-primary:hover:not(:disabled) { background: #c99a2e; }
-    .btn-danger   { background: #c0392b; color: #fff; }
-    .btn-danger:hover:not(:disabled)  { background: #a93226; }
-
-    /* ── Config panel ── */
-    .field { margin-bottom: 14px; }
-    label { display: block; font-size: 11px; color: #888; margin-bottom: 5px; }
-
-    /* Toggle switch */
-    .toggle-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 10px 12px;
-      background: #1c1c2e;
-      border-radius: 6px;
-      margin-bottom: 14px;
-    }
-    .toggle-label { font-size: 13px; }
-    .toggle {
-      position: relative;
-      width: 42px; height: 22px;
-    }
-    .toggle input { opacity: 0; width: 0; height: 0; }
-    .slider {
-      position: absolute;
-      inset: 0;
-      background: #333;
-      border-radius: 22px;
-      cursor: pointer;
-      transition: background .2s;
-    }
-    .slider::before {
-      content: "";
-      position: absolute;
-      width: 16px; height: 16px;
-      left: 3px; top: 3px;
-      background: #fff;
-      border-radius: 50%;
-      transition: transform .2s;
-    }
-    .toggle input:checked + .slider { background: #e0b03f; }
-    .toggle input:checked + .slider::before { transform: translateX(20px); }
-
-    input[type="number"], input[type="text"], select {
-      width: 100%;
-      padding: 7px 10px;
-      background: #1c1c2e;
-      border: 1px solid #2a2a45;
-      border-radius: 5px;
-      color: #ddd;
-      font-size: 13px;
-    }
-    input[type="number"]:focus, input[type="text"]:focus, select:focus {
-      outline: none;
-      border-color: #e0b03f88;
-    }
-
-    .faucet-config-block {
-      background: #1c1c2e;
-      border-radius: 6px;
-      padding: 8px 10px;
-      margin-bottom: 8px;
-    }
-    .clean-config {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    .cfg-card {
-      background: #181827;
-      border: 1px solid #2a2a45;
-      border-radius: 8px;
       padding: 10px;
-    }
-    .cfg-header-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 8px;
-    }
-    .cfg-card-title {
-      font-size: 12px;
-      font-weight: 700;
-      color: #e0b03f;
-      letter-spacing: .2px;
-    }
-    .cfg-subtitle {
-      margin-top: 8px;
-      margin-bottom: 6px;
-      font-size: 11px;
-      color: #9aa0b8;
+      text-align: center;
+      font-size: 13px;
       font-weight: 600;
+      cursor: pointer;
+      color: var(--text-dim);
+      border-radius: 12px;
+      transition: all 0.3s ease;
+      background: transparent;
     }
-    .cfg-note {
-      margin-bottom: 8px;
-      padding: 6px 8px;
-      border-radius: 6px;
-      background: #12121e;
-      border: 1px solid #2a2a45;
-      color: #a8afc7;
-      font-size: 10px;
-      line-height: 1.35;
-      cursor: help;
+    .tab.active { 
+      color: var(--text); 
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
     }
-    .cfg-grid {
-      display: grid;
-      gap: 8px;
+    .tab:hover:not(.active) { color: #fff; background: rgba(255,255,255,0.03); }
+
+    /* ── Main content ── */
+    .content-area { padding: 20px; }
+    .panel { display: none; }
+    .panel.active { display: block; animation: fadeIn 0.4s ease-out; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
     }
-    .cfg-grid.two-col { grid-template-columns: 1fr; }
-    .cfg-grid.three-col { grid-template-columns: 1fr; }
-    .cfg-row {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .cfg-row.compact {
-      display: grid;
-      grid-template-columns: 1fr 110px;
-      align-items: end;
-      gap: 8px;
-    }
-    .cfg-row label {
-      font-size: 10px;
-      color: #9aa0b8;
-      margin: 0;
-    }
-    .tip-label {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      cursor: help;
-    }
-    .tip-icon {
-      color: #4fc3f7;
-      font-size: 10px;
-      line-height: 1;
-    }
-    @media (min-width: 320px) {
-      .cfg-grid.two-col { grid-template-columns: 1fr 1fr; }
-    }
-    @media (min-width: 480px) {
-      .cfg-grid.three-col { grid-template-columns: 1fr 1fr; }
-    }
-    .faucet-config-row {
+
+    /* ── Dashboard Status Card ── */
+    .status-card {
+      background: linear-gradient(135deg, rgba(30, 30, 50, 0.8), rgba(20, 20, 35, 0.8));
+      border-radius: 20px;
+      padding: 20px;
+      margin-bottom: 20px;
+      border: 1px solid var(--glass-border);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
       display: flex;
       align-items: center;
-      gap: 8px;
-      margin-bottom: 5px;
+      gap: 15px;
     }
-    .faucet-config-row input[type="text"],
-    .faucet-config-row input[type="password"] {
-      flex: 1;
-      padding: 4px 8px;
-      font-size: 11px;
-      border: 1px solid #2a2a45;
+    .status-indicator {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      position: relative;
     }
-    .faucet-creds {
-      display: flex;
-      gap: 6px;
-      margin-top: 2px;
+    .status-indicator::after {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      background: inherit;
+      opacity: 0.3;
+      animation: pulse 2s infinite;
     }
-    .faucet-creds input {
-      flex: 1;
-      padding: 4px 8px;
-      font-size: 11px;
-      background: #12121e;
-      border: 1px solid #2a2a45;
-      border-radius: 4px;
-      color: #ddd;
+    @keyframes pulse {
+      0% { transform: scale(1); opacity: 0.4; }
+      100% { transform: scale(2.5); opacity: 0; }
     }
-    .faucet-creds input:focus { outline: none; border-color: #e0b03f88; }
-    .cred-label { font-size: 10px; color: #555; margin-bottom: 3px; }
-    .faucet-check { accent-color: #e0b03f; width: 14px; height: 14px; cursor: pointer; }
-    
-    /* Site selection */
-    .faucet-site-selector {
+    .status-info h2 { margin: 0; font-size: 15px; font-weight: 600; }
+    .status-info p { margin: 5px 0 0; font-size: 12px; color: var(--text-dim); }
+
+    .site-stats {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 6px;
-      margin-bottom: 14px;
+      gap: 10px;
+      margin-bottom: 20px;
     }
-    .site-radio-option {
-      position: relative;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 12px;
-      background: #1c1c2e;
-      border: 2px solid #2a2a45;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: all .2s;
+    .stat-item {
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      padding: 12px;
+      border-radius: 15px;
+      text-align: center;
     }
-    .site-radio-option:hover {
-      border-color: #e0b03f55;
-    }
-    .site-radio-option input[type="checkbox"] {
-      accent-color: #e0b03f;
-      width: 14px;
-      height: 14px;
-      cursor: pointer;
-      margin: 0;
-    }
-    .site-radio-option input[type="checkbox"]:checked + label {
-      color: #e0b03f;
-      font-weight: 600;
-    }
-    .site-radio-option label {
-      font-size: 12px;
-      cursor: pointer;
-      margin: 0;
-      flex: 1;
-    }
-    .site-radio-option.checked {
-      border-color: #e0b03f;
-      background: rgba(224, 176, 63, 0.08);
-    }
-    .site-radio-option.selected {
-      border-color: #4fc3f7;
-      box-shadow: 0 0 0 1px #4fc3f744 inset;
-    }
+    .stat-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+    .stat-value { font-size: 14px; font-weight: 700; margin-top: 4px; }
 
-    .save-row { display: flex; gap: 6px; margin-top: 4px; }
-    .save-row .btn { margin-bottom: 0; }
-    #saveMsg { font-size: 11px; color: #4caf50; text-align: center; margin-top: 6px; min-height: 14px; }
-    .wd-section {
-      margin-top: 6px;
-      border-top: 1px solid #2a2a45;
-      padding-top: 6px;
-    }
-    .wd-header {
+    /* ── Site List ── */
+    .site-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+    .site-card {
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      border-radius: 15px;
+      padding: 12px 15px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 5px;
+      transition: border-color 0.3s;
     }
-    .wd-header .cred-label { margin: 0; }
-    .wd-fields {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .wd-fields input {
-      width: 100%;
-      padding: 4px 8px;
-      font-size: 11px;
-      background: #12121e;
-      border: 1px solid #2a2a45;
-      border-radius: 4px;
-      color: #ddd;
-    }
-    .wd-fields input:focus { outline: none; border-color: #e0b03f88; }
-    .wd-row {
+    .site-card:hover { border-color: rgba(240, 185, 11, 0.4); }
+    .site-info { display: flex; align-items: center; gap: 12px; }
+    .site-icon { width: 32px; height: 32px; border-radius: 10px; background: #2a2a40; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; color: #f0b90b; }
+    .site-meta h3 { margin: 0; font-size: 13px; font-weight: 600; }
+    .site-meta p { margin: 2px 0 0; font-size: 11px; color: var(--text-dim); }
+    .site-status-tag { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 8px; }
+
+    /* ── Controls ── */
+    .controls { display: flex; gap: 10px; }
+    .btn {
+      flex: 1;
+      padding: 14px;
+      border: none;
+      border-radius: 15px;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 6px;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.3s ease;
     }
-    .wd-row input[type="number"] {
-      width: 90px;
-      flex-shrink: 0;
-      padding: 4px 8px;
-      font-size: 11px;
-      background: #12121e;
-      border: 1px solid #2a2a45;
-      border-radius: 4px;
-      color: #ddd;
+    .btn-primary { background: var(--accent); color: #000; box-shadow: 0 4px 15px var(--accent-glow); }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px var(--accent-glow); }
+    .btn-danger { background: rgba(255, 77, 77, 0.1); color: #ff4d4d; border: 1px solid rgba(255, 77, 77, 0.2); }
+    .btn-danger:hover { background: rgba(255, 77, 77, 0.2); }
+    .btn:disabled { opacity: 0.5; transform: none; cursor: not-allowed; }
+
+    /* ── Config Panel ── */
+    .config-group { margin-bottom: 24px; }
+    .group-title { font-size: 12px; font-weight: 700; color: var(--accent); text-transform: uppercase; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; }
+    .config-card { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 20px; padding: 20px; }
+    
+    .input-field { margin-bottom: 15px; }
+    .input-field:last-child { margin-bottom: 0; }
+    .input-label { display: block; font-size: 11px; color: var(--text-dim); font-weight: 600; margin-bottom: 8px; }
+    .input-container { position: relative; }
+    input[type="text"], input[type="password"], input[type="number"], select {
+      width: 100%;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid var(--glass-border);
+      border-radius: 12px;
+      padding: 12px;
+      color: #fff;
+      font-family: inherit;
+      font-size: 13px;
+      transition: border-color 0.3s;
     }
-    .wd-row input[type="number"]:focus { outline: none; border-color: #e0b03f88; }
-    .wd-row span { font-size: 10px; color: #555; flex-shrink: 0; }
-    .log-entry .wd-ok    { color: #4fc3f7; }
-    .log-entry .wd-error { color: #ff8a65; }
+    input:focus { border-color: var(--accent); outline: none; }
+    
+    .input-suffix { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 11px; color: var(--text-dim); font-weight: 600; pointer-events: none; }
+
+    .usd-rate { font-size: 10px; color: var(--status-ok); font-weight: 600; display: block; margin-top: 4px; }
+    .min-label { font-size: 10px; color: var(--accent); font-weight: 600; display: block; margin-top: 4px; }
+
+    /* Site Selection Grid */
+    .site-selector-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .site-option {
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      border-radius: 15px;
+      padding: 15px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.3s;
+    }
+    .site-option.selected { border-color: var(--accent); background: rgba(240, 185, 11, 0.05); }
+    .site-option input { position: absolute; top: 12px; left: 12px; border-radius: 5px; accent-color: var(--accent); }
+    .site-option-icon { font-size: 20px; }
+    .site-option-name { font-size: 12px; font-weight: 600; }
+
+    /* Range Input Styles */
+    .range-inputs { display: flex; gap: 10px; }
+    .range-inputs > div { flex: 1; }
+
+    /* ── Logs ── */
+    .log-container { display: flex; flex-direction: column; gap: 8px; }
+    .log-item { background: var(--glass); border-left: 3px solid var(--glass-border); border-radius: 0 10px 10px 0; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; }
+    .log-item.ok { border-left-color: var(--status-ok); }
+    .log-item.err { border-left-color: var(--status-err); }
+    .log-main { display: flex; flex-direction: column; gap: 2px; }
+    .log-site { font-size: 12px; font-weight: 700; }
+    .log-action { font-size: 10px; color: var(--text-dim); }
+    .log-info { text-align: right; }
+    .log-time { font-size: 10px; color: var(--text-dim); }
+    .log-balance { font-size: 11px; font-weight: 700; color: var(--accent); }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 10px; }
   </style>
 </head>
 <body>
 
 <header>
-  <h1>🪙 Faucet Auto-Claimer</h1>
-  <span id="headerState">–</span>
+  <h1>FAUCET PRO</h1>
+  <div class="header-status" id="headerStatus">Loading…</div>
 </header>
 
 <nav class="tabs">
-  <div class="tab active" data-tab="status">Status</div>
-  <div class="tab" data-tab="config">Configure</div>
-  <div class="tab" data-tab="log">Log</div>
+  <div class="tab active" data-tab="status">Overview</div>
+  <div class="tab" data-tab="config">Settings</div>
+  <div class="tab" data-tab="log">History</div>
 </nav>
 
-<!-- ── STATUS TAB ── -->
-<section class="panel active" id="tab-status">
-  <div class="status-badge">
-    <div class="dot grey" id="statusDot"></div>
-    <div id="statusText">Loading…</div>
-  </div>
-  <div class="next-run" id="nextRun"></div>
+<main class="content-area">
+  <!-- ── STATUS PANEL ── -->
+  <section class="panel active" id="tab-status">
+    <div class="status-card">
+      <div class="status-indicator grey" id="statusDot"></div>
+      <div class="status-info">
+        <h2 id="statusTitle">Idle</h2>
+        <p id="statusDesc">Scheduler is ready</p>
+      </div>
+    </div>
 
-  <div class="site-rows" id="siteRows"></div>
+    <div class="site-stats">
+      <div class="stat-item">
+        <div class="stat-label">Active Sites</div>
+        <div class="stat-value" id="activeCount">0</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Total Gained</div>
+        <div class="stat-value" id="totalValue">$0.00</div>
+      </div>
+    </div>
 
-  <button class="btn btn-primary" id="runBtn">▶ Run Now</button>
-  <button class="btn btn-danger"  id="stopBtn" style="display:none">■ Stop Run</button>
-</section>
+    <div class="site-list" id="siteRows">
+      <!-- Site cards injected here -->
+    </div>
 
-<!-- ── CONFIG TAB ── -->
-<section class="panel" id="tab-config">
-  <div class="toggle-row">
-    <span class="toggle-label">Enable scheduler</span>
-    <label class="toggle">
-      <input type="checkbox" id="cfgEnabled" />
-      <span class="slider"></span>
-    </label>
-  </div>
+    <div class="controls">
+      <button class="btn btn-primary" id="runBtn">▶ Start Claim Process</button>
+      <button class="btn btn-danger" id="stopBtn" style="display:none">■ Stop Task</button>
+    </div>
+  </section>
 
-  <div class="field">
-    <label>Select active sites (claimed sequentially). Click a site card to edit its settings.</label>
-    <div id="faucetSiteSelector" class="faucet-site-selector"></div>
-  </div>
+  <!-- ── CONFIG PANEL ── -->
+  <section class="panel" id="tab-config">
+    <div class="config-group">
+      <div class="group-title"><span>⚙️</span> Global Toggle</div>
+      <div class="config-card" style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-size:13px; font-weight:600;">Auto-Claim Scheduler</span>
+        <input type="checkbox" id="cfgEnabled" style="width:20px; height:20px; accent-color:var(--accent);">
+      </div>
+    </div>
 
-  <div class="field" id="faucetConfigSection" style="display:none">
-    <label>Configuration for selected site</label>
-    <div id="faucetConfigBlock"></div>
-  </div>
+    <div class="config-group">
+      <div class="group-title"><span>🌐</span> Select Faucets</div>
+      <div class="site-selector-grid" id="siteSelectorGrid">
+        <!-- Site options injected here -->
+      </div>
+    </div>
 
-  <div class="save-row">
-    <button class="btn btn-primary" id="saveBtn">💾 Save Settings</button>
-  </div>
-  <div id="saveMsg"></div>
+    <div class="config-group" id="faucetConfigSection" style="display:none">
+      <div class="group-title"><span>💎</span> <span id="selectedSiteLabel">Site Settings</span></div>
+      <div class="config-card" id="siteConfigCard">
+        <!-- Config inputs injected here -->
+      </div>
+    </div>
 
-  <div class="save-row" style="margin-top:14px;border-top:1px solid #2a2a45;padding-top:14px">
-    <button class="btn btn-primary" id="exportBtn">📥 Export</button>
-    <button class="btn btn-primary" id="importBtn">📤 Import</button>
-    <input type="file" id="importFile" accept=".json" style="display:none" />
-  </div>
-  <div id="importMsg"></div>
-</section>
+    <button class="btn btn-primary" id="saveBtn" style="width:100%; margin-top:20px;">💾 Save Configuration</button>
+    <div id="saveMsg" style="text-align:center; font-size:12px; margin-top:10px; height:15px;"></div>
 
-<!-- ── LOG TAB ── -->
-<section class="panel" id="tab-log">
-  <div class="log-title">Last 20 claim attempts</div>
-  <div class="log-list" id="logList">
-    <div class="log-entry" style="color:#555;font-style:italic">No entries yet.</div>
-  </div>
-</section>
+    <div style="display:flex; gap:10px; margin-top:20px; opacity:0.6;">
+      <button class="btn btn-danger" id="resetBtn" style="font-size:11px; padding:10px;">Reset Factory</button>
+      <button class="btn btn-danger" id="exportBtn" style="font-size:11px; padding:10px;">Export JSON</button>
+    </div>
+  </section>
+
+  <!-- ── LOG PANEL ── -->
+  <section class="panel" id="tab-log">
+    <div class="log-container" id="logList">
+      <div style="text-align:center; color:var(--text-dim); font-size:12px; margin-top:40px;">No events recorded</div>
+    </div>
+  </section>
+</main>
 
 <script src="constants.js"></script>
 <script src="popup.js"></script>

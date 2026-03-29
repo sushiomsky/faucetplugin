@@ -20,15 +20,29 @@ const DEFAULT_USD5_WD_THRESHOLD_BY_HOST = Object.freeze({
   "polpick.io":  "10"
 });
 
+// ── CoinGecko Price IDs ───────────────────────────────────────────────────────
+const CRYPTO_PRICE_IDS = Object.freeze({
+  "litepick.io": "litecoin",
+  "dogepick.io": "dogecoin",
+  "solpick.io":  "solana",
+  "bnbpick.io":  "binancecoin",
+  "tronpick.io": "tron",
+  "polpick.io":  "matic-network" // POL/MATIC
+});
+
 // ── Old threshold values that should be silently upgraded to the new default ──
 const WD_THRESHOLD_MIGRATION_BY_HOST = Object.freeze({
   "litepick.io": ["0.005", "0.01"],
   "dogepick.io": ["10.0", "6"],
   "solpick.io":  ["0.0025", "0.0065"],
-  "bnbpick.io":  ["0.005", "0.0018"],
+  "bnbpick.io":  ["0.005", "0.018"],
   "tronpick.io": ["7.5", "8"],
   "polpick.io":  ["1.5", "2"]
 });
+
+// ── Random timing defaults ───────────────────────────────────────────────────
+const DEFAULT_RANDOM_MIN = 0;
+const DEFAULT_RANDOM_MAX = 5;
 
 // ── High-roller dice strategy defaults ───────────────────────────────────────
 const DEFAULT_HIGH_ROLLER_CONFIG = Object.freeze({
@@ -57,6 +71,11 @@ function clampNumber(value, min, max) {
 
 function normalizeDiceSide(side) {
   return String(side || "").toLowerCase() === "lower" ? "lower" : "higher";
+}
+
+// Get price ID for host
+function getPriceIdForHost(host) {
+  return CRYPTO_PRICE_IDS[normalizeHost(host)] || null;
 }
 
 // dbEnabled param is accepted for call-site compatibility but not used.
@@ -142,11 +161,11 @@ function normalizeHighRollerConfig(rawConfig = {}) {
 // background.js and popup.js both use this to initialise / reset settings.
 function makeFaucetDefaults() {
   return [
-    { url: "https://litepick.io/faucet.php",  label: "litepick",  active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://litepick.io/faucet.php"),  wdAddress: "MWzkbmBnTzyauvgGudXwnDq18PLU9NPwAD",                   dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-    { url: "https://dogepick.io/faucet.php",  label: "dogepick",  active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://dogepick.io/faucet.php"), wdAddress: "DFWaPscZ9LZ6W1ZP3Cj17zBbgop2FeNweE",                    dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-    { url: "https://solpick.io/faucet.php",   label: "solpick",   active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://solpick.io/faucet.php"),  wdAddress: "7DjswfVdL8vX6xA2Wy1Vr6MEZQT1nTWkrL9U2taq9GhZ",       dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-    { url: "https://bnbpick.io/faucet.php",   label: "bnbpick",   active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://bnbpick.io/faucet.php"),  wdAddress: "0x05CF5E732c2c2a4C9aF1994DFC5878038cE37f7B",            dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-    { url: "https://tronpick.io/faucet.php",  label: "tronpick",  active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://tronpick.io/faucet.php"), wdAddress: "TAVvoGKqQqZpM4YBccJ5wyftPYRBKKyjEv",                    dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-    { url: "https://polpick.io/faucet.php",   label: "polpick",   active: false, intervalMinutes: 61, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://polpick.io/faucet.php"),  wdAddress: "0x05CF5E732c2c2a4C9aF1994DFC5878038cE37f7B",            dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() }
+    { url: "https://litepick.io/faucet.php",  label: "litepick",  active: false, intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://litepick.io/faucet.php"),  wdAddress: "MWzkbmBnTzyauvgGudXwnDq18PLU9NPwAD",                   dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
+    { url: "https://dogepick.io/faucet.php",  label: "dogepick",  active: false, intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://dogepick.io/faucet.php"), wdAddress: "DFWaPscZ9LZ6W1ZP3Cj17zBbgop2FeNweE",                    dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
+    { url: "https://solpick.io/faucet.php",   label: "solpick",   active: false, intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://solpick.io/faucet.php"),  wdAddress: "7DjswfVdL8vX6xA2Wy1Vr6MEZQT1nTWkrL9U2taq9GhZ",       dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
+    { url: "https://bnbpick.io/faucet.php",   label: "bnbpick",   active: false, intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://bnbpick.io/faucet.php"),  wdAddress: "0x05CF5E732c2c2a4C9aF1994DFC5878038cE37f7B",            dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
+    { url: "https://tronpick.io/faucet.php",  label: "tronpick",  active: false, intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://tronpick.io/faucet.php"), wdAddress: "TAVvoGKqQqZpM4YBccJ5wyftPYRBKKyjEv",                    dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
+    { url: "https://polpick.io/faucet.php",   label: "polpick",   active: false, intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: getDefaultWdThresholdForUrl("https://polpick.io/faucet.php"),  wdAddress: "0x05CF5E732c2c2a4C9aF1994DFC5878038cE37f7B",            dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() }
   ];
 }

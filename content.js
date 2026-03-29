@@ -514,7 +514,10 @@ function readBalance() {
     "#game_dice .user_balance",
     ".user_balance",
     "#game_dice [class*='balance' i]",
-    "#game_dice [id*='balance' i]"
+    "#game_dice [id*='balance' i]",
+    ".balance-value",
+    "#balance",
+    ".bal-amt"
   ];
 
   for (const sel of preferredSelectors) {
@@ -528,14 +531,51 @@ function readBalance() {
     '[class*="balance"]', '[id*="balance"]',
     '[class*="wallet"]',  '[id*="wallet"]',
     '[class*="amount"]',  '[id*="amount"]',
-    '.bal', '#bal'
+    '.bal', '#bal',
+    '.user-info b', '.navbar-text b'
   ];
   for (const sel of selectors) {
     for (const el of document.querySelectorAll(sel)) {
+      if (!el.offsetParent) continue;
       const value = parseNumericValue(el.textContent?.trim() || "");
       if (value != null) return value;
     }
   }
+  return null;
+}
+
+function scrapeMinimumWithdrawal() {
+  const textContent = document.body.innerText;
+  const patterns = [
+    /minimum\s+(?:withdrawal|withdraw|amount)[:\s]+([\d.]+)/i,
+    /min[:\s]+([\d.]+)/i,
+    /withdraw\s+min[:\s]+([\d.]+)/i,
+    /least[:\s]+([\d.]+)\s+\w+\s+to\s+withdraw/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = textContent.match(pattern);
+    if (match && match[1]) {
+      const val = parseFloat(match[1]);
+      if (Number.isFinite(val) && val > 0) {
+        log(`✓ Scraped minimum withdrawal: ${val}`);
+        return val;
+      }
+    }
+  }
+
+  // Look for it in specific elements
+  const selectors = ['.min_withdraw', '#min_withdraw', '.withdrawal_min', '.alert-info', '.text-muted'];
+  for (const sel of selectors) {
+    const el = document.querySelector(sel);
+    if (!el) continue;
+    const val = parseNumericValue(el.textContent);
+    if (val != null && val > 0 && /min|least/i.test(el.textContent)) {
+      log(`✓ Scraped minimum withdrawal from ${sel}: ${val}`);
+      return val;
+    }
+  }
+
   return null;
 }
 
@@ -1217,7 +1257,7 @@ class CombinedHighRollerStrategy {
     }
 
     const hardCap = this.current_bankroll * this.config.max_bet_fraction;
-    bet = Math.min(bet, hardCap, this.current_bankroll);
+    bet = Math.min(toFiniteNumber(bet, 0), hardCap, this.current_bankroll);
 
     const startBalanceFloor = this.start_bankroll * MIN_STARTING_BALANCE_BET_FRACTION;
     if (this.current_bankroll <= startBalanceFloor) {
@@ -1227,6 +1267,14 @@ class CombinedHighRollerStrategy {
       // Keep bets aggressive: never below 10% of starting bankroll.
       bet = Math.max(bet, startBalanceFloor);
     }
+
+    // FINAL SAFETY GUARD: bet must never exceed current_bankroll
+    if (bet > this.current_bankroll) {
+      bet = this.current_bankroll;
+    }
+
+    // Handle floating point precision safely for 8 decimals
+    bet = Math.floor(bet * 1e8) / 1e8;
 
     if (!Number.isFinite(bet) || bet <= 0) {
       this.last_bet = 0;
@@ -1839,6 +1887,12 @@ async function runWithdraw(address) {
   await sleep(500);
   log("jQuery available:", !!window.$);
 
+  // ── Scrape minimum withdrawal threshold ──
+  const minWd = scrapeMinimumWithdrawal();
+  if (minWd) {
+    chrome.runtime.sendMessage({ type: "scraped-min-wd", url: location.href, value: minWd });
+  }
+
   // ── Fill address ──
   const addrEl = document.getElementById('withdrawal_address') ||
     document.querySelector('[name*="address" i]') ||
@@ -1862,7 +1916,7 @@ async function runWithdraw(address) {
     addrEl.dispatchEvent(new Event("input",  { bubbles: true }));
     addrEl.dispatchEvent(new Event("change", { bubbles: true }));
   }
-  await sleep(500);
+  await sleep(1000); // Wait for form to settle after address fill
   log("Address filled:", addrEl.value);
 
   // ── Set max amount ──

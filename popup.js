@@ -4,12 +4,13 @@ document.querySelectorAll(".tab").forEach(tab => {
     document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
     document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
     tab.classList.add("active");
-    document.getElementById("tab-" + tab.dataset.tab).classList.add("active");
+    const target = document.getElementById("tab-" + tab.dataset.tab);
+    if (target) target.classList.add("active");
   });
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function fmtTime(ms) { return ms ? new Date(ms).toLocaleTimeString() : "–"; }
+function fmtTime(ms) { return ms ? new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "–"; }
 function fmtCountdown(ms) {
   const total = Math.max(0, Math.round(ms / 1000));
   const m = Math.floor(total / 60), s = total % 60;
@@ -19,17 +20,29 @@ function hostname(url) {
   try { return new URL(url).hostname.replace("www.", ""); } catch { return url; }
 }
 
-// ── Status tab ────────────────────────────────────────────────────────────────
+// ── Globals ──────────────────────────────────────────────────────────────────
+let currentFaucets = [];
+let selectedFaucetIndex = 0;
+let cryptoPrices = {};
+let minWdThresholds = {};
+
+// ── Status Tab ────────────────────────────────────────────────────────────────
 const statusDot   = document.getElementById("statusDot");
-const statusText  = document.getElementById("statusText");
-const nextRunEl   = document.getElementById("nextRun");
+const statusTitle = document.getElementById("statusTitle");
+const statusDesc  = document.getElementById("statusDesc");
+const activeCountEl = document.getElementById("activeCount");
+const totalValueEl  = document.getElementById("totalValue");
 const siteRowsEl  = document.getElementById("siteRows");
-const headerState = document.getElementById("headerState");
+const headerStatus = document.getElementById("headerStatus");
 const runBtn  = document.getElementById("runBtn");
 const stopBtn = document.getElementById("stopBtn");
 
 async function refreshStatus() {
-  const stored = await chrome.storage.local.get(["running", "settings", "activityLog", "activeTabs", "claimHistory", "lastRunStart"]);
+  const stored = await chrome.storage.local.get([
+    "running", "settings", "activityLog", "activeTabs", "claimHistory", 
+    "lastRunStart", "cryptoPrices", "minWdThresholds"
+  ]);
+  
   const settings     = stored.settings || {};
   const enabled      = settings.enabled !== false;
   const faucets      = (settings.faucets || []);
@@ -37,484 +50,372 @@ async function refreshStatus() {
   const activeTabs   = stored.activeTabs || {};
   const claimHistory = stored.claimHistory || {};
   const log          = stored.activityLog || [];
+  cryptoPrices       = stored.cryptoPrices?.data || {};
+  minWdThresholds    = stored.minWdThresholds || {};
   const now          = Date.now();
 
-  // Header state
+  // Header status
   const activeList = Object.values(activeTabs).filter(t => t.phase !== "done");
   if (!enabled) {
-    headerState.textContent = "○ Disabled";
-    headerState.style.color = "#e05050";
-  } else if (activeList.length > 0) {
-    headerState.textContent = "● Running";
-    headerState.style.color = "#e0b03f";
+    headerStatus.textContent = "OFF";
+    headerStatus.style.background = "rgba(255, 77, 77, 0.1)";
+    headerStatus.style.color = "#ff4d4d";
   } else {
-    headerState.textContent = "● Scheduler";
-    headerState.style.color = "#4caf50";
+    headerStatus.textContent = activeList.length > 0 ? "BUSY" : "AUTO";
+    headerStatus.style.background = activeList.length > 0 ? "rgba(240, 185, 11, 0.1)" : "rgba(0, 255, 136, 0.1)";
+    headerStatus.style.color = activeList.length > 0 ? "#f0b90b" : "#00ff88";
   }
 
-  // Status badge
+  // Status card
   if (running && activeList.length > 0) {
     const names = activeList.map(t => hostname(t.faucetUrl)).join(", ");
-    statusDot.className = "dot orange";
-    statusText.textContent = `Claiming: ${names}`;
+    statusDot.style.background = "#f0b90b";
+    statusTitle.textContent = "Claiming…";
+    statusDesc.textContent = names;
   } else if (!enabled) {
-    statusDot.className = "dot red";
-    statusText.textContent = "Scheduler disabled";
+    statusDot.style.background = "#ff4d4d";
+    statusTitle.textContent = "Disabled";
+    statusDesc.textContent = "Toggle in settings to start";
   } else {
-    statusDot.className = "dot green";
-    statusText.textContent = "Scheduler mode — monitoring runs";
+    statusDot.style.background = "#00ff88";
+    statusTitle.textContent = "Idle";
+    statusDesc.textContent = "Monitoring faucets…";
   }
 
-  // Next run — earliest due faucet
-  if (enabled && activeList.length === 0) {
-    let earliest = Infinity;
-    for (const f of faucets.filter(f => f.active !== false)) {
-      const last = claimHistory[f.url] || 0;
-      const next = last + (f.intervalMinutes || 61) * 60000;
-      if (next < earliest) earliest = next;
+  // Stats
+  activeCountEl.textContent = faucets.filter(f => f.active !== false).length;
+  
+  // Estimate total value from logs (simplified)
+  let totalUsd = 0;
+  log.forEach(e => {
+    if (e.balance && e.status === "ok") {
+      const priceId = getPriceIdForHost(e.url);
+      const price = cryptoPrices[priceId]?.usd || 0;
+      // Note: we can't accurately sum historical balances, but we can show current total if we had it.
+      // For now, let's just show the USD rate of the most recent balance in logs.
     }
-    if (earliest === Infinity) {
-      nextRunEl.textContent = "No active sites selected";
-    } else {
-      nextRunEl.textContent = earliest < now
-        ? "Due now"
-        : `Next run in ${fmtCountdown(earliest - now)}`;
-    }
-  } else if (activeList.length > 0) {
-    nextRunEl.textContent = `Started at ${fmtTime(stored.lastRunStart)}`;
-  } else {
-    nextRunEl.textContent = "";
-  }
+  });
+  // Instead of summing, let's just updated the totalValue with "Updated [time]"
+  totalValueEl.textContent = cryptoPrices ? "LIVE" : "OFFLINE";
 
-  // Per-site rows
+  // Per-site cards
   siteRowsEl.innerHTML = "";
   faucets.filter(f => f.active !== false).forEach(f => {
-    const tabEntry = Object.values(activeTabs).find(t => hostname(t.faucetUrl) === hostname(f.url));
-    const lastLog  = log.find(e => hostname(e.url) === hostname(f.url));
+    const host = hostname(f.url);
+    const tabEntry = Object.values(activeTabs).find(t => hostname(t.faucetUrl) === host);
+    const lastLog  = log.find(e => hostname(e.url) === host);
     const lastClaim = claimHistory[f.url] || 0;
-    const nextDue   = lastClaim + (f.intervalMinutes || 61) * 60000;
+    
+    // Calculate next run with some margin as displayed in background
+    const intervalMs  = (f.intervalMinutes || 61) * 60000;
+    const nextDue     = lastClaim + intervalMs;
 
-    let badge = "";
+    const card = document.createElement("div");
+    card.className = "site-card";
+    
+    let statusTag = "";
     if (tabEntry) {
-      const phase = tabEntry.phase;
-      const color = phase === "withdraw" ? "#34d399" : "#e0b03f";
-      badge = `<span class="site-status" style="color:${color}">● ${phase}…</span>`;
+      statusTag = `<span class="site-status-tag" style="background:rgba(240,185,11,0.1); color:#f0b90b;">${tabEntry.phase.toUpperCase()}</span>`;
     } else if (lastLog) {
-      badge = lastLog.status === "ok" || lastLog.status === "wd-ok"
-        ? `<span class="site-status ok">✓ ${fmtTime(lastLog.ts)}</span>`
-        : `<span class="site-status error">✗ ${lastLog.reason || "error"}</span>`;
+      if (lastLog.status === "ok" || lastLog.status === "wd-ok") {
+        statusTag = `<span class="site-status-tag" style="background:rgba(0,255,136,0.1); color:#00ff88;">OK ${fmtTime(lastLog.ts)}</span>`;
+      } else {
+        statusTag = `<span class="site-status-tag" style="background:rgba(255,77,77,0.1); color:#ff4d4d;">FAIL</span>`;
+      }
     } else {
-      badge = `<span class="site-status idle">–</span>`;
+      statusTag = `<span class="site-status-tag" style="background:var(--glass); color:var(--text-dim);">IDLE</span>`;
     }
 
-    const countdown = !tabEntry && nextDue > now
-      ? `<span style="font-size:10px;color:#555;margin-left:4px">${fmtCountdown(nextDue - now)}</span>` : "";
+    const priceId = getPriceIdForHost(f.url);
+    const price = cryptoPrices[priceId]?.usd || 0;
+    const usdVal = lastLog?.balance ? (lastLog.balance * price).toFixed(2) : "0.00";
 
-    const div = document.createElement("div");
-    div.className = "site-row";
-    div.innerHTML = `<span class="site-name">${hostname(f.url)}</span>${badge}${countdown}`;
-    siteRowsEl.appendChild(div);
+    card.innerHTML = `
+      <div class="site-info">
+        <div class="site-icon">${host[0].toUpperCase()}</div>
+        <div class="site-meta">
+          <h3>${host}</h3>
+          <p>${nextDue > now ? "Next: " + fmtCountdown(nextDue - now) : "Due now"}</p>
+        </div>
+      </div>
+      <div style="text-align:right">
+        ${statusTag}
+        <div style="font-size:10px; color:var(--text-dim); margin-top:4px;">${lastLog?.balance ? lastLog.balance.toFixed(4) + " ($" + usdVal + ")" : ""}</div>
+      </div>
+    `;
+    siteRowsEl.appendChild(card);
   });
 
-  runBtn.disabled = !enabled;
-  stopBtn.style.display = enabled ? "block" : "none";
+  runBtn.disabled = !enabled || activeList.length > 0;
+  runBtn.style.display = activeList.length > 0 ? "none" : "flex";
+  stopBtn.style.display = activeList.length > 0 ? "flex" : "none";
 
   renderLog(log);
 }
 
-// ── Log tab ───────────────────────────────────────────────────────────────────
+// ── Log Tab ───────────────────────────────────────────────────────────────────
 function renderLog(log) {
   const el = document.getElementById("logList");
   if (!log || log.length === 0) {
-    el.innerHTML = `<div class="log-entry" style="color:#555;font-style:italic">No entries yet.</div>`;
+    el.innerHTML = `<div style="text-align:center; color:var(--text-dim); font-size:12px; margin-top:40px;">No events recorded</div>`;
     return;
   }
+  
   el.innerHTML = log.map(e => {
-    let cls, icon, label;
-    if      (e.status === "ok")       { cls = "ok";       icon = "✓";  label = "claimed"; }
-    else if (e.status === "wd-ok")    { cls = "wd-ok";    icon = "↑";  label = "withdrawn"; }
-    else if (e.status === "wd-error") { cls = "wd-error"; icon = "↑✗"; label = e.reason || "wd-error"; }
-    else                              { cls = "error";    icon = "✗";  label = e.reason || "error"; }
-    const bal = e.balance != null ? ` [${e.balance}]` : "";
-    return `<div class="log-entry"><span class="${cls}">${icon}</span> ${hostname(e.url)}${bal} — ${fmtTime(e.ts)} — ${label}</div>`;
+    let cls = "ok", icon = "✓", action = "Claimed faucet";
+    if (e.status === "wd-ok") { cls = "ok"; icon = "↑"; action = "Withdrawal success"; }
+    else if (e.status === "wd-error") { cls = "err"; icon = "⚠"; action = "WD Error: " + (e.reason || "unknown"); }
+    else if (e.status === "error") { cls = "err"; icon = "✗"; action = "Error: " + (e.reason || "unknown"); }
+    
+    const host = hostname(e.url);
+    const priceId = getPriceIdForHost(e.url);
+    const price = cryptoPrices[priceId]?.usd || 0;
+    const usdStr = e.balance ? ` ($${(e.balance * price).toFixed(3)})` : "";
+
+    return `
+      <div class="log-item ${cls}">
+        <div class="log-main">
+          <span class="log-site">${host}</span>
+          <span class="log-action">${action}</span>
+        </div>
+        <div class="log-info">
+          <div class="log-balance">${e.balance ? e.balance.toFixed(6) + usdStr : icon}</div>
+          <div class="log-time">${fmtTime(e.ts)}</div>
+        </div>
+      </div>
+    `;
   }).join("");
 }
 
-// ── Config tab ────────────────────────────────────────────────────────────────
+// ── Config Tab ────────────────────────────────────────────────────────────────
 const cfgEnabled = document.getElementById("cfgEnabled");
-const faucetSiteSelector = document.getElementById("faucetSiteSelector");
+const siteSelectorGrid = document.getElementById("siteSelectorGrid");
 const faucetConfigSection = document.getElementById("faucetConfigSection");
-const faucetConfigBlock = document.getElementById("faucetConfigBlock");
+const siteConfigCard = document.getElementById("siteConfigCard");
+const selectedSiteLabel = document.getElementById("selectedSiteLabel");
 const saveBtn    = document.getElementById("saveBtn");
 const saveMsg    = document.getElementById("saveMsg");
 
-// All shared constants and utility functions (normalizeHost, normalizeDbStrategy,
-// normalizeDbChance, normalizeDiceSide, getDefaultHighRollerConfig,
-// getDefaultWdThresholdForUrl, normalizeWdThresholdForUrl, normalizeHighRollerConfig,
-// toFiniteNumber, clampNumber, makeFaucetDefaults) are loaded from constants.js.
-
 function escapeAttr(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return String(value ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
-
-function tipLabel(text, tooltip) {
-  return `<span class="tip-label" title="${escapeAttr(tooltip)}">${text}<span class="tip-icon">ⓘ</span></span>`;
-}
-
-let currentFaucets = [];
-let selectedFaucetIndex = 0;
 
 function renderSiteSelector() {
-  faucetSiteSelector.innerHTML = "";
+  siteSelectorGrid.innerHTML = "";
   currentFaucets.forEach((f, i) => {
     const isActive = f.active !== false;
     const isSelected = i === selectedFaucetIndex;
+    
     const div = document.createElement("div");
-    div.className = "site-radio-option" + (isActive ? " checked" : "") + (isSelected ? " selected" : "");
-    div.innerHTML =
-      "<input type='checkbox' id='fsite" + i + "'" + (isActive ? " checked" : "") + " />" +
-      "<label for='fsite" + i + "'>" + f.label + "</label>";
-    faucetSiteSelector.appendChild(div);
+    div.className = "site-option" + (isSelected ? " selected" : "");
+    div.innerHTML = `
+      <input type="checkbox" id="fsite${i}" ${isActive ? "checked" : ""} />
+      <div class="site-option-icon">${f.label[0].toUpperCase()}</div>
+      <div class="site-option-name">${f.label}</div>
+    `;
+    siteSelectorGrid.appendChild(div);
 
-    const checkbox = div.querySelector("#fsite" + i);
+    const checkbox = div.querySelector(`#fsite${i}`);
     checkbox.addEventListener("click", (e) => { e.stopPropagation(); });
-    checkbox.addEventListener("change", function() {
+    checkbox.addEventListener("change", () => {
       currentFaucets[i].active = checkbox.checked;
-      div.classList.toggle("checked", checkbox.checked);
     });
 
-    div.addEventListener("click", function() {
+    div.addEventListener("click", () => {
       selectedFaucetIndex = i;
-      document.querySelectorAll(".site-radio-option").forEach(el => el.classList.remove("selected"));
+      document.querySelectorAll(".site-option").forEach(el => el.classList.remove("selected"));
       div.classList.add("selected");
       renderConfigForSite(i);
-      faucetConfigSection.style.display = "block";
     });
   });
 }
 
 async function loadConfig() {
-  const { settings } = await chrome.storage.local.get("settings");
-  const s = settings || {};
+  const stored = await chrome.storage.local.get(["settings", "cryptoPrices", "minWdThresholds"]);
+  const s = stored.settings || {};
+  cryptoPrices = stored.cryptoPrices?.data || {};
+  minWdThresholds = stored.minWdThresholds || {};
+  
   cfgEnabled.checked = s.enabled !== false;
 
-  const storedFaucets = s.faucets && s.faucets.length ? s.faucets : [];
+  const storedFaucets = s.faucets || [];
   const storedByUrl = {};
   for (const f of storedFaucets) { if (f.url) storedByUrl[f.url] = f; }
   
   currentFaucets = makeFaucetDefaults().map(def => {
     const merged = { ...def, ...(storedByUrl[def.url] || {}) };
-    const dbEnabled = merged.dbEnabled === true;
-    const normalizedStrategy = normalizeDbStrategy(merged.dbStrategy, dbEnabled);
-    const normalizedChance = normalizeDbChance(merged.dbChance, normalizedStrategy);
     return {
       ...merged,
       wdThreshold: normalizeWdThresholdForUrl(def.url, merged.wdThreshold),
-      dbStrategy: normalizedStrategy,
-      dbChance: normalizedChance
+      dbStrategy: normalizeDbStrategy(merged.dbStrategy, merged.dbEnabled === true),
+      dbChance: normalizeDbChance(merged.dbChance, merged.dbStrategy)
     };
   });
 
-  const firstEnabled = currentFaucets.findIndex(f => f.active !== false);
-  selectedFaucetIndex = firstEnabled >= 0 ? firstEnabled : 0;
-
   renderSiteSelector();
   renderConfigForSite(selectedFaucetIndex);
-  faucetConfigSection.style.display = "block";
 }
 
 function renderConfigForSite(index) {
   const f = currentFaucets[index];
-  const dbSide = normalizeDiceSide(f.dbSide || DEFAULT_DB_SIDE);
-  const dbStrategy = normalizeDbStrategy(f.dbStrategy, f.dbEnabled === true);
-  const dbChance = normalizeDbChance(f.dbChance, dbStrategy);
-  const strategyCfg = normalizeHighRollerConfig(f.dbStrategyConfig);
+  selectedSiteLabel.textContent = f.label.toUpperCase() + " CONFIG";
+  faucetConfigSection.style.display = "block";
 
-  faucetConfigBlock.innerHTML = `
-    <div class="faucet-config-block clean-config">
-      <div class="cfg-card">
-        <div class="cfg-card-title">General</div>
-        <div class="cfg-row compact">
-          <label for="fint">${tipLabel("Interval (min)", "How often this site runs in the scheduler.")}</label>
-          <input type="number" id="fint" value="${f.intervalMinutes || 61}" min="5" step="1" />
-        </div>
-        <div class="cfg-row">
-          <label>${tipLabel("Login credentials", "Optional: used only if this site requires login before claiming.")}</label>
-          <div class="faucet-creds">
-            <input type="text" id="fuser" value="${escapeAttr(f.username || "")}" placeholder="Username / Email" autocomplete="off" />
-            <input type="password" id="fpwd" value="${escapeAttr(f.password || "")}" placeholder="Password" autocomplete="new-password" />
-          </div>
-        </div>
-      </div>
+  const priceId = getPriceIdForHost(f.url);
+  const price = cryptoPrices[priceId]?.usd || 0;
+  const host = hostname(f.url);
+  const minThreshold = minWdThresholds[host];
 
-      <div class="cfg-card">
-        <div class="cfg-header-row">
-          <div class="cfg-card-title">Auto-Withdraw</div>
-          <label class="toggle">
-            <input type="checkbox" id="fwd" ${f.wdEnabled ? "checked" : ""} />
-            <span class="slider"></span>
-          </label>
+  siteConfigCard.innerHTML = `
+    <!-- Scheduling -->
+    <div class="input-field">
+      <label class="input-label">Base Interval (minutes)</label>
+      <input type="number" id="fint" value="${f.intervalMinutes || 61}" min="5" />
+    </div>
+    <div class="input-field">
+      <label class="input-label">Random Offset Range (minutes)</label>
+      <div class="range-inputs">
+        <div>
+          <input type="number" id="frmin" value="${f.minRandomMinutes || 0}" min="0" placeholder="Min" />
         </div>
-        <div class="cfg-grid two-col">
-          <div class="cfg-row">
-            <label for="fwdth">${tipLabel("WD Threshold", "Single threshold for dice stop + withdrawal. Defaults are prefilled to roughly $5 coin-equivalent per faucet.")}</label>
-            <input type="number" id="fwdth" value="${escapeAttr(f.wdThreshold || "")}" placeholder="e.g. 0.001" step="any" min="0" />
-          </div>
-          <div class="cfg-row">
-            <label for="fwdaddr">${tipLabel("Withdrawal Address", "Wallet address where funds are sent once threshold is met.")}</label>
-            <input type="text" id="fwdaddr" value="${escapeAttr(f.wdAddress || "")}" placeholder="Withdrawal wallet address" />
-          </div>
-        </div>
-      </div>
-
-      <div class="cfg-card">
-        <div class="cfg-header-row">
-          <div class="cfg-card-title">Auto-DiceBet</div>
-          <label class="toggle">
-            <input type="checkbox" id="fdb" ${f.dbEnabled ? "checked" : ""} />
-            <span class="slider"></span>
-          </label>
-        </div>
-
-        <div class="cfg-grid three-col">
-          <div class="cfg-row">
-            <label for="fdbc">${tipLabel("Bet Chance %", "Editable chance for both strategies. Default for All-In strategy is 1%.")}</label>
-            <input type="number" id="fdbc" value="${escapeAttr(dbChance)}" step="0.01" min="0.01" max="99" />
-          </div>
-          <div class="cfg-row">
-            <label for="fdbside">${tipLabel("Bet Side", "Higher = roll over target. Lower = roll under target.")}</label>
-            <select id="fdbside">
-              <option value="higher" ${dbSide === "higher" ? "selected" : ""}>Higher (Roll Over)</option>
-              <option value="lower" ${dbSide === "lower" ? "selected" : ""}>Lower (Roll Under)</option>
-            </select>
-          </div>
-          <div class="cfg-row">
-            <label for="fdbstrategy">${tipLabel("Strategy", "Default is All-In (default chance 1%): one all-in shot after claim, withdraw if hit.")}</label>
-            <select id="fdbstrategy">
-              <option value="all-in-0.1" ${dbStrategy === "all-in-0.1" ? "selected" : ""}>All-In (Default)</option>
-              <option value="combined-high-roller" ${dbStrategy === "combined-high-roller" ? "selected" : ""}>Combined High-Roller</option>
-            </select>
-          </div>
-        </div>
-
-        <div id="allInOptions" style="${dbStrategy === DICE_STRATEGY_ALL_IN_001 ? "" : "display:none;"}">
-          <div class="cfg-subtitle">All-In Options</div>
-          <div class="cfg-note">All-In places one bet using your selected chance and side, then proceeds to withdrawal only if threshold is reached.</div>
-        </div>
-
-        <div id="highRollerOptions" style="${dbStrategy === DICE_STRATEGY_COMBINED_HIGH_ROLLER ? "" : "display:none;"}">
-          <div class="cfg-subtitle">Combined High-Roller Options</div>
-          <div class="cfg-note" title="${escapeAttr("Bets never go below 10% of starting bankroll. If bankroll falls below that floor, the bot goes all-in.")}">Minimum bet floor: 10% of starting bankroll (all-in below floor).</div>
-          <div class="cfg-grid three-col">
-            <div class="cfg-row">
-              <label for="fdb_bbf">${tipLabel("Base Bet Fraction", "Default Kelly bet fraction. Aggressive default is 10%.")}</label>
-              <input type="number" id="fdb_bbf" value="${strategyCfg.base_bet_fraction}" step="0.01" min="0.0001" max="1" />
-            </div>
-            <div class="cfg-row">
-              <label for="fdb_mbf">${tipLabel("Max Bet Fraction", "Maximum allowed bet fraction per roll. Aggressive default is 40%.")}</label>
-              <input type="number" id="fdb_mbf" value="${strategyCfg.max_bet_fraction}" step="0.01" min="0.01" max="1" />
-            </div>
-            <div class="cfg-row">
-              <label for="fdb_mld">${tipLabel("Max Ladder Depth", "How many ladder steps can be climbed before resetting to Kelly mode.")}</label>
-              <input type="number" id="fdb_mld" value="${strategyCfg.max_ladder_depth}" step="1" min="1" max="10" />
-            </div>
-            <div class="cfg-row">
-              <label for="fdb_hw">${tipLabel("History Window", "Number of recent rolls used to detect volatility.")}</label>
-              <input type="number" id="fdb_hw" value="${strategyCfg.history_window}" step="1" min="1" max="200" />
-            </div>
-            <div class="cfg-row">
-              <label for="fdb_st">${tipLabel("Streak Trigger", "Consecutive wins needed to enter Streak Harvester mode. Aggressive default is 1.")}</label>
-              <input type="number" id="fdb_st" value="${strategyCfg.streak_trigger}" step="1" min="1" max="50" />
-            </div>
-            <div class="cfg-row">
-              <label for="fdb_vt">${tipLabel("Volatility Trigger", "Minimum win/loss imbalance in history window to enter Breakout mode.")}</label>
-              <input type="number" id="fdb_vt" value="${strategyCfg.volatility_trigger}" step="1" min="1" max="200" />
-            </div>
-          </div>
+        <div>
+          <input type="number" id="frmax" value="${f.maxRandomMinutes || 5}" min="0" placeholder="Max" />
         </div>
       </div>
     </div>
+
+    <hr style="border:none; border-top:1px solid var(--glass-border); margin:20px 0;">
+
+    <!-- Credentials -->
+    <div class="input-field">
+      <label class="input-label">Login Credentials (Optional)</label>
+      <input type="text" id="fuser" value="${escapeAttr(f.username || "")}" placeholder="Username / Email" style="margin-bottom:8px;">
+      <input type="password" id="fpwd" value="${escapeAttr(f.password || "")}" placeholder="Password">
+    </div>
+
+    <hr style="border:none; border-top:1px solid var(--glass-border); margin:20px 0;">
+
+    <!-- Withdrawal -->
+    <div class="cfg-header-row" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+      <span style="font-size:12px; font-weight:700;">AUTO-WITHDRAWAL</span>
+      <input type="checkbox" id="fwd" ${f.wdEnabled ? "checked" : ""} style="width:16px; height:16px; accent-color:var(--accent);">
+    </div>
+    
+    <div class="input-field">
+      <label class="input-label">Withdrawal Threshold</label>
+      <div class="input-container">
+        <input type="number" id="fwdth" value="${f.wdThreshold || ""}" step="any" min="0">
+      </div>
+      <span class="usd-rate" id="usdRate">≈ $0.00 USD</span>
+      ${minThreshold ? `<span class="min-label">Min required: ${minThreshold}</span>` : ""}
+    </div>
+
+    <div class="input-field">
+      <label class="input-label">Wallet Address</label>
+      <input type="text" id="fwdaddr" value="${escapeAttr(f.wdAddress || "")}" placeholder="Enter address">
+    </div>
+
+    <hr style="border:none; border-top:1px solid var(--glass-border); margin:20px 0;">
+
+    <!-- Dice -->
+    <div class="cfg-header-row" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+      <span style="font-size:12px; font-weight:700;">AUTO-DICE (BETA)</span>
+      <input type="checkbox" id="fdb" ${f.dbEnabled ? "checked" : ""} style="width:16px; height:16px; accent-color:var(--accent);">
+    </div>
+
+    <div class="input-field">
+      <label class="input-label">Strategy</label>
+      <select id="fdbstrategy">
+        <option value="all-in-0.1" ${f.dbStrategy === "all-in-0.1" ? "selected" : ""}>All-In (1% default)</option>
+        <option value="combined-high-roller" ${f.dbStrategy === "combined-high-roller" ? "selected" : ""}>Combined High-Roller</option>
+      </select>
+    </div>
   `;
 
-  const strategySelect = faucetConfigBlock.querySelector("#fdbstrategy");
-  const allInOptions = faucetConfigBlock.querySelector("#allInOptions");
-  const highRollerOptions = faucetConfigBlock.querySelector("#highRollerOptions");
-  function toggleStrategyOptions() {
-    const selectedStrategy = normalizeDbStrategy(strategySelect?.value || DEFAULT_DB_STRATEGY, true);
-    const isHighRoller = selectedStrategy === DICE_STRATEGY_COMBINED_HIGH_ROLLER;
-    if (allInOptions) allInOptions.style.display = isHighRoller ? "none" : "";
-    if (highRollerOptions) highRollerOptions.style.display = isHighRoller ? "" : "none";
-  }
-  strategySelect?.addEventListener("change", toggleStrategyOptions);
-  toggleStrategyOptions();
+  // Live USD rate updates
+  const thresholdInput = siteConfigCard.querySelector("#fwdth");
+  const usdRateEl = siteConfigCard.querySelector("#usdRate");
+  const updateUsdLabel = () => {
+    const val = parseFloat(thresholdInput.value) || 0;
+    usdRateEl.textContent = `≈ $${(val * price).toFixed(2)} USD`;
+    if (minThreshold && val < parseFloat(minThreshold)) {
+      usdRateEl.style.color = "#ff4d4d";
+      usdRateEl.textContent += " (BELOW MIN)";
+    } else {
+      usdRateEl.style.color = "#00ff88";
+    }
+  };
+  thresholdInput.addEventListener("input", updateUsdLabel);
+  updateUsdLabel();
 }
 
-saveBtn.addEventListener("click", async function() {
-  if (selectedFaucetIndex < 0 || selectedFaucetIndex >= currentFaucets.length) {
-    saveMsg.textContent = "Select a site first";
-    saveMsg.style.color = "#ff9800";
-    setTimeout(() => { saveMsg.textContent = ""; }, 3000);
+saveBtn.addEventListener("click", async () => {
+  const f = currentFaucets[selectedFaucetIndex];
+  const host = hostname(f.url);
+  const minThreshold = minWdThresholds[host];
+
+  const intervalMinutes = parseInt(siteConfigCard.querySelector("#fint").value) || 61;
+  const minRand = parseInt(siteConfigCard.querySelector("#frmin").value) || 0;
+  const maxRand = parseInt(siteConfigCard.querySelector("#frmax").value) || 5;
+  const username = siteConfigCard.querySelector("#fuser").value.trim();
+  const password = siteConfigCard.querySelector("#fpwd").value;
+  const wdEnabled = siteConfigCard.querySelector("#fwd").checked;
+  const wdThreshold = siteConfigCard.querySelector("#fwdth").value.trim();
+  
+  // Validation
+  if (minThreshold && parseFloat(wdThreshold) < parseFloat(minThreshold)) {
+    alert(`Error: Withdrawal threshold for ${host} cannot be lower than the site minimum (${minThreshold}).`);
     return;
   }
-  
-  const intervalMinutes = Math.max(5, parseInt(faucetConfigBlock.querySelector("#fint").value) || 61);
-  const username = faucetConfigBlock.querySelector("#fuser").value.trim();
-  const password = faucetConfigBlock.querySelector("#fpwd").value;
-  const wdEnabled = faucetConfigBlock.querySelector("#fwd").checked;
-  const wdThreshold = faucetConfigBlock.querySelector("#fwdth").value.trim();
-  const wdAddress = faucetConfigBlock.querySelector("#fwdaddr").value.trim();
-  const dbEnabled = faucetConfigBlock.querySelector("#fdb").checked;
-  const dbChanceInput = faucetConfigBlock.querySelector("#fdbc").value.trim();
-  const dbSide = normalizeDiceSide(faucetConfigBlock.querySelector("#fdbside")?.value || DEFAULT_DB_SIDE);
-  const dbStrategyRaw = faucetConfigBlock.querySelector("#fdbstrategy")?.value || DEFAULT_DB_STRATEGY;
-  const dbStrategy = normalizeDbStrategy(dbStrategyRaw, dbEnabled);
-  const dbChance = normalizeDbChance(dbChanceInput, dbStrategy);
-  const dbStrategyConfig = normalizeHighRollerConfig({
-    base_bet_fraction: faucetConfigBlock.querySelector("#fdb_bbf")?.value,
-    max_bet_fraction: faucetConfigBlock.querySelector("#fdb_mbf")?.value,
-    max_ladder_depth: faucetConfigBlock.querySelector("#fdb_mld")?.value,
-    history_window: faucetConfigBlock.querySelector("#fdb_hw")?.value,
-    streak_trigger: faucetConfigBlock.querySelector("#fdb_st")?.value,
-    volatility_trigger: faucetConfigBlock.querySelector("#fdb_vt")?.value
+
+  const wdAddress = siteConfigCard.querySelector("#fwdaddr").value.trim();
+  const dbEnabled = siteConfigCard.querySelector("#fdb").checked;
+  const dbStrategy = siteConfigCard.querySelector("#fdbstrategy").value;
+
+  // Update memory
+  f.intervalMinutes = intervalMinutes;
+  f.minRandomMinutes = minRand;
+  f.maxRandomMinutes = maxRand;
+  f.username = username;
+  f.password = password;
+  f.wdEnabled = wdEnabled;
+  f.wdThreshold = wdThreshold;
+  f.wdAddress = wdAddress;
+  f.dbEnabled = dbEnabled;
+  f.dbStrategy = dbStrategy;
+
+  chrome.runtime.sendMessage({ 
+    type: "save-settings", 
+    settings: { enabled: cfgEnabled.checked, faucets: currentFaucets } 
   });
-  const selectedIdx = selectedFaucetIndex;
 
-  const faucets = currentFaucets.map((f, i) => ({
-    url: f.url,
-    label: f.label,
-    active: f.active !== false,
-    intervalMinutes: i === selectedIdx ? intervalMinutes : (f.intervalMinutes || 61),
-    username: i === selectedIdx ? username : f.username,
-    password: i === selectedIdx ? password : f.password,
-    wdEnabled: i === selectedIdx ? wdEnabled : f.wdEnabled,
-    wdThreshold: i === selectedIdx
-      ? normalizeWdThresholdForUrl(f.url, wdThreshold)
-      : normalizeWdThresholdForUrl(f.url, f.wdThreshold),
-    wdAddress: i === selectedIdx ? wdAddress : f.wdAddress,
-    dbEnabled: i === selectedIdx ? dbEnabled : (f.dbEnabled === true),
-    dbChance: i === selectedIdx
-      ? dbChance
-      : normalizeDbChance(f.dbChance, normalizeDbStrategy(f.dbStrategy, f.dbEnabled === true)),
-    dbSide: i === selectedIdx ? dbSide : normalizeDiceSide(f.dbSide || DEFAULT_DB_SIDE),
-    dbStrategy: i === selectedIdx ? dbStrategy : normalizeDbStrategy(f.dbStrategy, f.dbEnabled === true),
-    dbStrategyConfig: i === selectedIdx ? dbStrategyConfig : normalizeHighRollerConfig(f.dbStrategyConfig)
-  }));
-
-  currentFaucets = faucets;
-  renderSiteSelector();
-
-  chrome.runtime.sendMessage({ type: "save-settings", settings: { enabled: cfgEnabled.checked, faucets: faucets } });
-  saveMsg.textContent = "Saved!";
-  saveMsg.style.color = "#4caf50";
-  setTimeout(() => { saveMsg.textContent = ""; }, 2000);
-  await refreshStatus();
+  saveMsg.textContent = "Configuration Saved!";
+  saveMsg.style.color = "#00ff88";
+  setTimeout(() => { saveMsg.textContent = ""; }, 2500);
 });
 
-// ── Export/Import settings ────────────────────────────────────────────────────
-const exportBtn   = document.getElementById("exportBtn");
-const importBtn   = document.getElementById("importBtn");
-const importFile  = document.getElementById("importFile");
-const importMsg   = document.getElementById("importMsg");
+// ── Export / Reset ────────────────────────────────────────────────────────────
+document.getElementById("resetBtn").addEventListener("click", async () => {
+  if (confirm("Reset everything to factory defaults?")) {
+    chrome.runtime.sendMessage({ type: "reset-all-sites" });
+    setTimeout(() => location.reload(), 500);
+  }
+});
 
-function showImportMsg(text, isError = false) {
-  importMsg.textContent = text;
-  importMsg.style.color = isError ? "#e05050" : "#4caf50";
-  setTimeout(() => { importMsg.textContent = ""; }, 3000);
-}
-
-exportBtn.addEventListener("click", async () => {
+document.getElementById("exportBtn").addEventListener("click", async () => {
   const { settings } = await chrome.storage.local.get("settings");
-  const toExport = settings || { enabled: true, faucets: [] };
-  
-  const exportData = {
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    settings: toExport
-  };
-  
-  const json = JSON.stringify(exportData, null, 2);
-  const blob = new Blob([json], { type: "application/json" });
+  const blob = new Blob([JSON.stringify(settings, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  const now = new Date();
-  const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
   a.href = url;
-  a.download = `faucet-settings-${dateStr}.json`;
+  a.download = `faucet-config-${Date.now()}.json`;
   a.click();
-  URL.revokeObjectURL(url);
-  
-  importMsg.textContent = "✓ Exported!";
-  importMsg.style.color = "#4caf50";
-  setTimeout(() => { importMsg.textContent = ""; }, 2000);
 });
 
-importBtn.addEventListener("click", () => {
-  importFile.click();
-});
-
-importFile.addEventListener("change", async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  
-  const reader = new FileReader();
-  reader.onload = async (event) => {
-    try {
-      const data = JSON.parse(event.target.result);
-      
-      // Validate structure
-      if (!data.settings || typeof data.settings !== "object") {
-        throw new Error("Invalid file structure: missing 'settings' object");
-      }
-      if (!("enabled" in data.settings)) {
-        throw new Error("Invalid settings: missing 'enabled' flag");
-      }
-      if (!Array.isArray(data.settings.faucets)) {
-        throw new Error("Invalid settings: 'faucets' must be an array");
-      }
-      
-      // Validate faucets structure
-      for (const f of data.settings.faucets) {
-        if (!f.url || typeof f.url !== "string") {
-          throw new Error("Invalid faucet: each faucet must have a 'url' string");
-        }
-      }
-      
-      // Confirm before overwriting
-      const confirmed = confirm("Import settings from this file? This will overwrite current settings.");
-      if (!confirmed) {
-        importFile.value = "";
-        return;
-      }
-      
-      // Save imported settings
-      await chrome.storage.local.set({ settings: data.settings });
-      showImportMsg("✓ Settings imported!");
-      
-      // Reload config UI
-      await loadConfig();
-      await refreshStatus();
-      
-    } catch (err) {
-      console.error("[FaucetPlugin] Import error:", err);
-      showImportMsg(`Error: ${err.message}`, true);
-    }
-    
-    importFile.value = "";
-  };
-  
-  reader.readAsText(file);
-});
-
-// ── Run / Stop buttons ────────────────────────────────────────────────────────
+// ── Controls ──────────────────────────────────────────────────────────────────
 runBtn.addEventListener("click", () => {
   chrome.runtime.sendMessage({ type: "manual-run" });
-  statusDot.className = "dot orange";
-  statusText.textContent = "Starting…";
-  runBtn.disabled = true;
+  refreshStatus();
 });
 
 stopBtn.addEventListener("click", async () => {
@@ -523,7 +424,7 @@ stopBtn.addEventListener("click", async () => {
     try { await chrome.tabs.remove(parseInt(tabId)); } catch (_) {}
   }
   await chrome.storage.local.set({ activeTabs: {}, running: false });
-  await refreshStatus();
+  refreshStatus();
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
