@@ -600,6 +600,51 @@ async function handleMessage(msg, sender) {
     return;
   }
 
+  if (msg.type === "manual-run-dice") {
+    const s = await getSettings();
+    const cfg = s.faucets.find(f => f.url === msg.url);
+    if (!cfg) return;
+
+    const host = hostKey(cfg.url);
+    const diceHost = new URL(cfg.url).origin + "/dice.php";
+    const { activeTabs = {} } = await chrome.storage.local.get("activeTabs");
+
+    // Remove any previously stuck bot tabs for this host
+    for (const [id, data] of Object.entries(activeTabs)) {
+      if (hostKey(data.faucetUrl) === host) {
+        delete activeTabs[id];
+      }
+    }
+
+    // Try to reuse the current tab if it's open to the same host
+    const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    let targetTabId;
+    let needsNav = false;
+
+    if (currentTab && currentTab.url && hostKey(currentTab.url) === host) {
+      targetTabId = currentTab.id;
+      if (!currentTab.url.includes("dice.php") && !currentTab.url.match(/dice/i)) {
+        needsNav = true;
+      }
+    } else {
+      const newTab = await chrome.tabs.create({ url: diceHost, active: true });
+      targetTabId = newTab.id;
+      needsNav = false; // Brand new tab navigates automatically
+    }
+
+    activeTabs[targetTabId] = { faucetUrl: cfg.url, phase: "dicebet", phaseStartedAt: Date.now() };
+    await chrome.storage.local.set({ activeTabs });
+
+    if (needsNav) {
+      chrome.tabs.update(targetTabId, { url: diceHost });
+    } else if (currentTab && targetTabId === currentTab.id) {
+      // We are already on the dice page. Reloading forces the content script to run fresh
+      // as a plugin tab, immediately bootstrapping the bet bot process.
+      chrome.tabs.reload(targetTabId);
+    }
+    return;
+  }
+
   if (msg.type === "save-settings") {
     const old = await getSettings();
     await chrome.storage.local.set({ settings: { ...old, ...msg.settings } });

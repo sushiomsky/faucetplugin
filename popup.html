@@ -9,348 +9,513 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #0a0a12;
-      --panel: rgba(25, 25, 45, 0.7);
+      --bg: #0d0d17;
+      --card-bg: rgba(255, 255, 255, 0.04);
+      --card-border: rgba(255, 255, 255, 0.1);
       --accent: #f0b90b;
-      --accent-glow: rgba(240, 185, 11, 0.3);
+      --accent-glow: rgba(240, 185, 11, 0.2);
       --text: #ffffff;
       --text-dim: #9aa0b8;
       --status-ok: #00ff88;
       --status-err: #ff4d4d;
-      --glass: rgba(255, 255, 255, 0.05);
-      --glass-border: rgba(255, 255, 255, 0.1);
+      --status-warn: #f0b90b;
+      --header-bg: rgba(13, 13, 23, 0.9);
+      --nav-bg: rgba(20, 20, 35, 0.5);
     }
 
     *, *::before, *::after { box-sizing: border-box; }
+    
     body {
       font-family: 'Outfit', sans-serif;
       width: 380px;
+      height: 520px;
       margin: 0;
       background: var(--bg);
       color: var(--text);
-      overflow-x: hidden;
-      background-image: 
-        radial-gradient(circle at 10% 20%, rgba(240, 185, 11, 0.05) 0%, transparent 20%),
-        radial-gradient(circle at 90% 80%, rgba(0, 255, 136, 0.05) 0%, transparent 20%);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
     }
 
     /* ── Header ── */
     header {
-      padding: 20px;
+      padding: 16px 20px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      background: rgba(10, 10, 18, 0.8);
-      backdrop-filter: blur(10px);
-      position: sticky;
-      top: 0;
+      background: var(--header-bg);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--card-border);
       z-index: 100;
-      border-bottom: 1px solid var(--glass-border);
     }
-    header h1 { 
-      margin: 0; 
-      font-size: 18px; 
-      font-weight: 700;
-      background: linear-gradient(90deg, #f0b90b, #ffe580);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      letter-spacing: -0.5px;
+    
+    .logo-area {
+      display: flex;
+      align-items: center;
+      gap: 10px;
     }
-    .header-status {
-      font-size: 12px;
-      font-weight: 600;
-      padding: 4px 10px;
-      border-radius: 20px;
-      background: var(--glass);
-      border: 1px solid var(--glass-border);
+    
+    .logo-icon {
+      width: 28px;
+      height: 28px;
+      background: url('icons/icon_48.png') no-repeat center center;
+      background-size: contain;
+      border-radius: 8px;
+      box-shadow: 0 0 15px var(--accent-glow);
     }
 
-    /* ── Tabs ── */
-    .tabs {
-      display: flex;
-      gap: 10px;
-      padding: 10px 20px;
-      background: rgba(15, 15, 25, 0.5);
+    header h1 { 
+      margin: 0; 
+      font-size: 16px; 
+      font-weight: 700;
+      letter-spacing: -0.2px;
     }
-    .tab {
+
+    /* Toggle Switch */
+    .master-switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 24px;
+    }
+    .master-switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #333;
+      transition: .4s;
+      border-radius: 24px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px; width: 18px;
+      left: 3px; bottom: 3px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+    input:checked + .slider { background-color: var(--status-ok); }
+    input:checked + .slider:before { transform: translateX(20px); }
+    input:checked + .slider { box-shadow: 0 0 10px rgba(0, 255, 136, 0.4); }
+
+    /* ── Navigation ── */
+    nav {
+      display: flex;
+      padding: 4px;
+      background: var(--nav-bg);
+      margin: 12px 20px;
+      border-radius: 12px;
+      gap: 4px;
+    }
+    
+    .nav-item {
       flex: 1;
-      padding: 10px;
+      padding: 8px 0;
       text-align: center;
       font-size: 13px;
       font-weight: 600;
       cursor: pointer;
       color: var(--text-dim);
-      border-radius: 12px;
-      transition: all 0.3s ease;
-      background: transparent;
+      border-radius: 8px;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      border: 1px solid transparent;
     }
-    .tab.active { 
-      color: var(--text); 
-      background: var(--glass);
-      border: 1px solid var(--glass-border);
-      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    
+    .nav-item.active {
+      background: var(--card-bg);
+      color: var(--text);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      border: 1px solid var(--card-border);
     }
-    .tab:hover:not(.active) { color: #fff; background: rgba(255,255,255,0.03); }
 
-    /* ── Main content ── */
-    .content-area { padding: 20px; }
-    .panel { display: none; }
-    .panel.active { display: block; animation: fadeIn 0.4s ease-out; }
+    /* ── Main Content ── */
+    main {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
 
-    @keyframes fadeIn {
+    .panel {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      padding: 0 20px 20px;
+      display: none;
+      flex-direction: column;
+      animation: slideUp 0.3s ease-out;
+    }
+    
+    .panel.active { display: flex; }
+
+    @keyframes slideUp {
       from { opacity: 0; transform: translateY(10px); }
       to { opacity: 1; transform: translateY(0); }
     }
 
-    /* ── Dashboard Status Card ── */
-    .status-card {
-      background: linear-gradient(135deg, rgba(30, 30, 50, 0.8), rgba(20, 20, 35, 0.8));
-      border-radius: 20px;
-      padding: 20px;
-      margin-bottom: 20px;
-      border: 1px solid var(--glass-border);
-      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-      display: flex;
-      align-items: center;
-      gap: 15px;
+    /* ── Scrollbars ── */
+    .scrollable {
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding-right: 4px;
     }
-    .status-indicator {
-      width: 12px; height: 12px;
-      border-radius: 50%;
-      position: relative;
-    }
-    .status-indicator::after {
-      content: '';
-      position: absolute;
-      inset: -4px;
-      border-radius: 50%;
-      background: inherit;
-      opacity: 0.3;
-      animation: pulse 2s infinite;
-    }
-    @keyframes pulse {
-      0% { transform: scale(1); opacity: 0.4; }
-      100% { transform: scale(2.5); opacity: 0; }
-    }
-    .status-info h2 { margin: 0; font-size: 15px; font-weight: 600; }
-    .status-info p { margin: 5px 0 0; font-size: 12px; color: var(--text-dim); }
+    .scrollable::-webkit-scrollbar { width: 4px; }
+    .scrollable::-webkit-scrollbar-track { background: transparent; }
+    .scrollable::-webkit-scrollbar-thumb { background: var(--card-border); border-radius: 10px; }
 
-    .site-stats {
+    /* ── Status Panel Components ── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 12px;
+      text-align: center;
+    }
+    
+    .stat-val { font-size: 18px; font-weight: 700; color: var(--accent); }
+    .stat-lbl { font-size: 10px; color: var(--text-dim); text-transform: uppercase; margin-top: 2px; }
+
+    .site-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 10px;
-      margin-bottom: 20px;
-    }
-    .stat-item {
-      background: var(--glass);
-      border: 1px solid var(--glass-border);
-      padding: 12px;
-      border-radius: 15px;
-      text-align: center;
-    }
-    .stat-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
-    .stat-value { font-size: 14px; font-weight: 700; margin-top: 4px; }
-
-    /* ── Site List ── */
-    .site-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
-    .site-card {
-      background: var(--glass);
-      border: 1px solid var(--glass-border);
-      border-radius: 15px;
-      padding: 12px 15px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      transition: border-color 0.3s;
-    }
-    .site-card:hover { border-color: rgba(240, 185, 11, 0.4); }
-    .site-info { display: flex; align-items: center; gap: 12px; }
-    .site-icon { width: 32px; height: 32px; border-radius: 10px; background: #2a2a40; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; color: #f0b90b; }
-    .site-meta h3 { margin: 0; font-size: 13px; font-weight: 600; }
-    .site-meta p { margin: 2px 0 0; font-size: 11px; color: var(--text-dim); }
-    .site-status-tag { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 8px; }
-
-    /* ── Controls ── */
-    .controls { display: flex; gap: 10px; }
-    .btn {
       flex: 1;
-      padding: 14px;
-      border: none;
-      border-radius: 15px;
-      font-family: inherit;
-      font-size: 14px;
+    }
+    
+    .site-status-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: all 0.2s ease;
+      position: relative;
+    }
+    
+    .site-status-card.running { border-color: var(--accent); box-shadow: 0 0 10px var(--accent-glow); }
+    
+    .card-top { display: flex; justify-content: space-between; align-items: center; }
+    .site-name { font-size: 13px; font-weight: 600; }
+    .site-indicator { width: 8px; height: 8px; border-radius: 50%; background: #333; }
+    .site-indicator.ok { background: var(--status-ok); box-shadow: 0 0 8px var(--status-ok); }
+    .site-indicator.err { background: var(--status-err); box-shadow: 0 0 8px var(--status-err); }
+    .site-indicator.busy { background: var(--status-warn); animation: pulse 1s infinite alternate; }
+
+    @keyframes pulse { from { opacity: 0.3; } to { opacity: 1; } }
+
+    .card-btm { font-size: 11px; color: var(--text-dim); }
+    .countdown { color: var(--text); font-weight: 600; }
+
+    /* ── Config Panel Components ── */
+    .config-layout {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      gap: 12px;
+    }
+    
+    .site-picker {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      padding-bottom: 8px;
+    }
+    
+    .site-chip {
+      padding: 5px 6px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      font-size: 11px;
       font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+      color: var(--text-dim);
+      transition: all 0.2s;
+      text-align: center;
+      text-overflow: ellipsis;
+      overflow: hidden;
+    }
+    
+    .site-chip.active {
+      background: var(--accent);
+      color: #000;
+      border-color: var(--accent);
+    }
+
+    .config-content {
+      flex: 1;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .form-group { display: flex; flex-direction: column; gap: 4px; }
+    .form-label { font-size: 11px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; }
+    
+    .input-row { display: flex; gap: 8px; }
+    .input-row > * { flex: 1; }
+
+    input[type="text"], input[type="password"], input[type="number"], select {
+      width: 100%;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 8px 12px;
+      color: #fff;
+      font-family: inherit;
+      font-size: 13px;
+      transition: border-color 0.2s;
+    }
+    input:focus { border-color: var(--accent); outline: none; }
+    
+    .toggle-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+    }
+    .toggle-label { font-size: 12px; font-weight: 600; }
+
+    .dynamic-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 8px 12px;
+      background: rgba(0,0,0,0.2);
+      border-radius: 12px;
+      border: 1px dashed var(--card-border);
+      animation: fadeIn 0.3s ease;
+    }
+    
+    @keyframes fadeIn { from { opacity: 0; transform: scaleY(0.9); } to { opacity: 1; transform: scaleY(1); } }
+    
+    .hidden { display: none !important; }
+
+    /* ── History Panel Components ── */
+    .log-item {
+      background: var(--card-bg);
+      border-radius: 12px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border: 1px solid var(--card-border);
+    }
+    .log-main { display: flex; flex-direction: column; gap: 2px; }
+    .log-site { font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; }
+    .log-title { font-size: 12px; font-weight: 600; }
+    .log-meta { font-size: 10px; color: var(--text-dim); }
+    .log-side { text-align: right; }
+    .log-val { font-size: 12px; font-weight: 700; color: var(--status-ok); }
+    .log-ts { font-size: 10px; color: var(--text-dim); }
+
+    /* ── Global Controls ── */
+    .btn {
+      padding: 12px;
+      border-radius: 12px;
+      border: none;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 700;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 8px;
-      transition: all 0.3s ease;
+      transition: .2s;
     }
-    .btn-primary { background: var(--accent); color: #000; box-shadow: 0 4px 15px var(--accent-glow); }
-    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px var(--accent-glow); }
-    .btn-danger { background: rgba(255, 77, 77, 0.1); color: #ff4d4d; border: 1px solid rgba(255, 77, 77, 0.2); }
-    .btn-danger:hover { background: rgba(255, 77, 77, 0.2); }
-    .btn:disabled { opacity: 0.5; transform: none; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); color: #000; }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 15px var(--accent-glow); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-secondary { background: var(--card-bg); color: var(--text); border: 1px solid var(--card-border); }
 
-    /* ── Config Panel ── */
-    .config-group { margin-bottom: 24px; }
-    .group-title { font-size: 12px; font-weight: 700; color: var(--accent); text-transform: uppercase; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; }
-    .config-card { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 20px; padding: 20px; }
-    
-    .input-field { margin-bottom: 15px; }
-    .input-field:last-child { margin-bottom: 0; }
-    .input-label { display: block; font-size: 11px; color: var(--text-dim); font-weight: 600; margin-bottom: 8px; }
-    .input-container { position: relative; }
-    input[type="text"], input[type="password"], input[type="number"], select {
-      width: 100%;
-      background: rgba(0,0,0,0.3);
-      border: 1px solid var(--glass-border);
-      border-radius: 12px;
-      padding: 12px;
-      color: #fff;
-      font-family: inherit;
-      font-size: 13px;
-      transition: border-color 0.3s;
+    .save-indicator {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      background: var(--status-ok);
+      color: #000;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      opacity: 0;
+      transition: .4s;
+      pointer-events: none;
+      z-index: 1000;
     }
-    input:focus { border-color: var(--accent); outline: none; }
-    
-    .input-suffix { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 11px; color: var(--text-dim); font-weight: 600; pointer-events: none; }
+    .save-indicator.show { opacity: 1; transform: translateY(-10px); }
 
-    .usd-rate { font-size: 10px; color: var(--status-ok); font-weight: 600; display: block; margin-top: 4px; }
-    .min-label { font-size: 10px; color: var(--accent); font-weight: 600; display: block; margin-top: 4px; }
-
-    /* Site Selection Grid */
-    .site-selector-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-    .site-option {
-      background: var(--glass);
-      border: 1px solid var(--glass-border);
-      border-radius: 15px;
-      padding: 15px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 10px;
-      cursor: pointer;
-      position: relative;
-      transition: all 0.3s;
-    }
-    .site-option.selected { border-color: var(--accent); background: rgba(240, 185, 11, 0.05); }
-    .site-option input { position: absolute; top: 12px; left: 12px; border-radius: 5px; accent-color: var(--accent); }
-    .site-option-icon { font-size: 20px; }
-    .site-option-name { font-size: 12px; font-weight: 600; }
-
-    /* Range Input Styles */
-    .range-inputs { display: flex; gap: 10px; }
-    .range-inputs > div { flex: 1; }
-
-    /* ── Logs ── */
-    .log-container { display: flex; flex-direction: column; gap: 8px; }
-    .log-item { background: var(--glass); border-left: 3px solid var(--glass-border); border-radius: 0 10px 10px 0; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; }
-    .log-item.ok { border-left-color: var(--status-ok); }
-    .log-item.err { border-left-color: var(--status-err); }
-    .log-main { display: flex; flex-direction: column; gap: 2px; }
-    .log-site { font-size: 12px; font-weight: 700; }
-    .log-action { font-size: 10px; color: var(--text-dim); }
-    .log-info { text-align: right; }
-    .log-time { font-size: 10px; color: var(--text-dim); }
-    .log-balance { font-size: 11px; font-weight: 700; color: var(--accent); }
-
-    /* Scrollbar */
-    ::-webkit-scrollbar { width: 4px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 10px; }
   </style>
 </head>
 <body>
 
 <header>
-  <h1>FAUCET PRO</h1>
-  <div class="header-status" id="headerStatus">Loading…</div>
+  <div class="logo-area">
+    <div class="logo-icon"></div>
+    <h1>FAUCET PRO</h1>
+  </div>
+  <label class="master-switch" title="Global Toggle">
+    <input type="checkbox" id="masterToggle">
+    <span class="slider"></span>
+  </label>
 </header>
 
-<nav class="tabs">
-  <div class="tab active" data-tab="status">Overview</div>
-  <div class="tab" data-tab="config">Settings</div>
-  <div class="tab" data-tab="log">History</div>
+<nav id="mainNav">
+  <div class="nav-item active" data-tab="status">Status</div>
+  <div class="nav-item" data-tab="config">Settings</div>
+  <div class="nav-item" data-tab="history">Logs</div>
 </nav>
 
-<main class="content-area">
-  <!-- ── STATUS PANEL ── -->
+<main>
+  <!-- STATUS PANEL -->
   <section class="panel active" id="tab-status">
-    <div class="status-card">
-      <div class="status-indicator grey" id="statusDot"></div>
-      <div class="status-info">
-        <h2 id="statusTitle">Idle</h2>
-        <p id="statusDesc">Scheduler is ready</p>
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-val" id="activeSitesCount">0</div>
+        <div class="stat-lbl">Active Faucets</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" id="totalEarned">LIVE</div>
+        <div class="stat-lbl">Market Prices</div>
       </div>
     </div>
-
-    <div class="site-stats">
-      <div class="stat-item">
-        <div class="stat-label">Active Sites</div>
-        <div class="stat-value" id="activeCount">0</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-label">Total Gained</div>
-        <div class="stat-value" id="totalValue">$0.00</div>
-      </div>
+    
+    <div class="site-grid scrollable" id="statusGrid">
+      <!-- Grid items injected -->
     </div>
 
-    <div class="site-list" id="siteRows">
-      <!-- Site cards injected here -->
-    </div>
-
-    <div class="controls">
-      <button class="btn btn-primary" id="runBtn">▶ Start Claim Process</button>
-      <button class="btn btn-danger" id="stopBtn" style="display:none">■ Stop Task</button>
+    <div style="margin-top: 16px;">
+      <button class="btn btn-primary" id="startBtn" style="width: 100%;">▶ RUN ALL DUE NOW</button>
+      <button class="btn btn-secondary hidden" id="stopBtn" style="width: 100%; margin-top: 8px; border-color: var(--status-err); color: var(--status-err);">■ STOP ALL TASKS</button>
     </div>
   </section>
 
-  <!-- ── CONFIG PANEL ── -->
+  <!-- CONFIG PANEL -->
   <section class="panel" id="tab-config">
-    <div class="config-group">
-      <div class="group-title"><span>⚙️</span> Global Toggle</div>
-      <div class="config-card" style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-size:13px; font-weight:600;">Auto-Claim Scheduler</span>
-        <input type="checkbox" id="cfgEnabled" style="width:20px; height:20px; accent-color:var(--accent);">
+    <div class="config-layout">
+      <div class="site-picker" id="siteSelector">
+        <!-- Site chips injected -->
       </div>
-    </div>
+      
+      <div class="config-content scrollable">
+        <div class="toggle-row">
+          <span class="toggle-label">Enable Faucet Strategy</span>
+          <label class="master-switch">
+            <input type="checkbox" id="siteEnabled">
+            <span class="slider"></span>
+          </label>
+        </div>
 
-    <div class="config-group">
-      <div class="group-title"><span>🌐</span> Select Faucets</div>
-      <div class="site-selector-grid" id="siteSelectorGrid">
-        <!-- Site options injected here -->
+        <div class="form-group">
+          <label class="form-label">Run Interval (Mins)</label>
+          <div class="input-row">
+            <input type="number" id="baseInterval" placeholder="Base (e.g. 61)" min="5">
+            <input type="number" id="randOffset" placeholder="Rand (e.g. 10)" min="0">
+          </div>
+        </div>
+
+
+
+        <!-- Withdrawal Section -->
+        <div class="toggle-row">
+          <span class="toggle-label">Auto-Withdrawal</span>
+          <label class="master-switch">
+            <input type="checkbox" id="wdEnabled">
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div id="wdFields" class="dynamic-section hidden">
+          <div class="form-group">
+            <label class="form-label">Threshold & Wallet</label>
+            <input type="number" id="wdThreshold" step="any" placeholder="Min. Amount" style="margin-bottom: 6px;">
+            <input type="text" id="wdAddress" placeholder="Withdrawal Address">
+            <div id="minWdLabel" style="font-size: 10px; color: var(--status-warn); margin-top: 2px;"></div>
+          </div>
+        </div>
+
+        <!-- Dice Section -->
+        <div class="toggle-row">
+          <span class="toggle-label">Auto-Dicebet (Risk)</span>
+          <label class="master-switch">
+            <input type="checkbox" id="dbEnabled">
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div id="dbFields" class="dynamic-section hidden">
+          <div class="form-group">
+            <label class="form-label">Dice Strategy</label>
+            <select id="dbStrategy">
+              <option value="all-in-0.1">All-In (1% default)</option>
+              <option value="combined-high-roller">High-Roller Ladder</option>
+            </select>
+          </div>
+          <div id="dbStrategyConfigFields" class="form-group hidden" style="margin-top: 8px; background: rgba(0,0,0,0.15); padding: 8px; border-radius: 8px; border: 1px solid var(--card-border);">
+            <label class="form-label" style="font-size: 10px; margin-bottom: 6px;">Ladder Configuration Params</label>
+            
+            <div class="input-row" style="margin-bottom: 2px;">
+              <input type="number" id="dbBaseBet" step="0.01" placeholder="Base (0.1=10%)" title="Base bet fraction (0.1 = 10%)">
+              <input type="number" id="dbMaxBet" step="0.01" placeholder="Max (0.4=40%)" title="Max bet fraction (0.4 = 40%)">
+            </div>
+            <div style="font-size: 9px; color: var(--text-dim); margin-bottom: 8px; padding-left: 2px;">
+              Starting bet vs. Hard limit (% of your balance)
+            </div>
+
+            <div class="input-row" style="margin-bottom: 2px;">
+              <input type="number" id="dbLadderDepth" step="1" placeholder="Max Steps (5)" title="Max ladder depth">
+              <input type="number" id="dbHistoryWindow" step="1" placeholder="Window (10)" title="History window size">
+            </div>
+            <div style="font-size: 9px; color: var(--text-dim); margin-bottom: 8px; padding-left: 2px;">
+              Max multiplier steps &nbsp;|&nbsp; Bets to track history
+            </div>
+
+            <div class="input-row" style="margin-bottom: 2px;">
+              <input type="number" id="dbStreakTrigger" step="1" placeholder="Streak (1)" title="Streak trigger length">
+              <input type="number" id="dbVolatilityTrigger" step="1" placeholder="Vol Trig (4)" title="Volatility trigger count">
+            </div>
+            <div style="font-size: 9px; color: var(--text-dim); margin-bottom: 2px; padding-left: 2px;">
+              Losses in a row &nbsp;|&nbsp; Total losses in window to trigger
+            </div>
+          </div>
+          <button class="btn btn-primary" id="manualDiceBtn" style="margin-top: 8px; font-size: 11px; padding: 8px; width: 100%;">🎲 MANUAL LADDER START</button>
+        </div>
+
+        <div style="margin-top: 8px; opacity: 0.6;">
+           <button class="btn btn-secondary" id="resetBtn" style="font-size: 11px; padding: 6px; width: 100%;">Factory Reset All Data</button>
+        </div>
       </div>
-    </div>
-
-    <div class="config-group" id="faucetConfigSection" style="display:none">
-      <div class="group-title"><span>💎</span> <span id="selectedSiteLabel">Site Settings</span></div>
-      <div class="config-card" id="siteConfigCard">
-        <!-- Config inputs injected here -->
-      </div>
-    </div>
-
-    <button class="btn btn-primary" id="saveBtn" style="width:100%; margin-top:20px;">💾 Save Configuration</button>
-    <div id="saveMsg" style="text-align:center; font-size:12px; margin-top:10px; height:15px;"></div>
-
-    <div style="display:flex; gap:10px; margin-top:20px; opacity:0.6;">
-      <button class="btn btn-danger" id="resetBtn" style="font-size:11px; padding:10px;">Reset Factory</button>
-      <button class="btn btn-danger" id="exportBtn" style="font-size:11px; padding:10px;">Export JSON</button>
     </div>
   </section>
 
-  <!-- ── LOG PANEL ── -->
-  <section class="panel" id="tab-log">
-    <div class="log-container" id="logList">
-      <div style="text-align:center; color:var(--text-dim); font-size:12px; margin-top:40px;">No events recorded</div>
+  <!-- HISTORY PANEL -->
+  <section class="panel" id="tab-history">
+    <div class="scrollable" style="flex: 1;" id="logGrid">
+      <!-- Logic for empty state or logs -->
     </div>
   </section>
 </main>
+
+<div class="save-indicator" id="saveHint">Settings Saved ✓</div>
 
 <script src="constants.js"></script>
 <script src="popup.js"></script>

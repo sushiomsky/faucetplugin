@@ -3,7 +3,7 @@
 // (guard prevents automating manual visits).
 //
 // Flow:
-//   login page   → fill creds + captcha → submit
+//   login page   → captcha → submit
 //   faucet page  → captcha → click Claim → read balance → (auto-withdraw if needed)
 //   withdraw page→ fill address + captcha → submit
 //
@@ -56,6 +56,47 @@ function sameHost(url1, url2) {
     return url1 === url2;
   }
 }
+
+/**
+ * Executes a function in the page's main execution context (the 'window' world).
+ * This is the only way in MV3 to interact with page-level variables and functions
+ * (like window.process_bet_game_dice) from an isolated content script.
+ */
+function runInPageContext(fn, ...args) {
+  const scriptSync = document.createElement("script");
+  scriptSync.textContent = `(${fn.toString()})(...${JSON.stringify(args)});`;
+  (document.head || document.documentElement).appendChild(scriptSync);
+  scriptSync.remove();
+}
+
+/**
+ * Executes a function in the page context and returns the result via a message.
+ */
+async function runInPageContextWithResult(fn, ...args) {
+  const requestId = Math.random().toString(36).substring(7);
+  const scriptSync = document.createElement("script");
+  scriptSync.textContent = `
+    (async () => {
+      try {
+        const result = await (${fn.toString()})(...${JSON.stringify(args)});
+        window.dispatchEvent(new CustomEvent('plugin-result-${requestId}', { detail: { result, ok: true } }));
+      } catch (err) {
+        window.dispatchEvent(new CustomEvent('plugin-result-${requestId}', { detail: { error: String(err), ok: false } }));
+      }
+    })();
+  `;
+
+  return new Promise((resolve, reject) => {
+    const handler = (e) => {
+      if (e.detail.ok) resolve(e.detail.result);
+      else reject(new Error(e.detail.error));
+    };
+    window.addEventListener(`plugin-result-${requestId}`, handler, { once: true });
+    (document.head || document.documentElement).appendChild(scriptSync);
+    scriptSync.remove();
+  });
+}
+
 
 // Generate random delay between 15-60 seconds to avoid detection
 function randomDelay() {
@@ -141,25 +182,79 @@ function sendPhaseHeartbeat(detail = "") {
   chrome.runtime.sendMessage({ type: "phase-heartbeat", phase: "faucet", detail, ts: now });
 }
 
-// ── Plugin-tab guard ──────────────────────────────────────────────────────────
-// Prevents the script from running when the user opens a faucet page manually.
+// ── Main Execution Flow ───────────────────────────────────────────────────────
+
+async function main() {
+  // Give background script and site assets/balance a moment to load
+  await sleep(800);
+
+  const pluginTab = await isPluginTab();
+  if (!pluginTab) {
+    log("Not a plugin-managed tab. Automation disabled.");
+    return;
+  }
+
+  log("Plugin tab detected. Starting automation...");
+
+  if (isDicebetPage()) {
+    log("Detected dicebet page - preparing to start betting engine");
+    const config = await getDicebetConfig();
+    log(`DiceBet config: enabled=${config.enabled}, strategy=${config.strategy}, side=${config.side}, chance=${config.chance}%, wd_threshold=${config.wdThreshold}`);
+    const shouldWithdraw = await runDicebet();
+    if (shouldWithdraw) {
+      log("DiceBet succeeded and balance reached threshold, proceeding to withdrawal");
+      sendDone(readBalance());
+    } else {
+      log("DiceBet failed or threshold not met");
+      sendError("dicebet-failed");
+    }
+    return;
+  }
+
+  const wdInfo = await getWithdrawInfo();
+  if (wdInfo.isWithdrawTab) {
+    log("Detected withdrawal tab");
+    await runWithdraw(wdInfo.address);
+    return;
+  }
+
+  log("Checking page type...");
+  if (hasLoginForm()) {
+    log("Detected login page");
+    await runLogin();
+  } else if (isFaucetPage()) {
+    log("Detected faucet page");
+    await runFaucet();
+  } else {
+    const tabState = await getCurrentTabState();
+    const targetFaucetUrl = tabState?.faucetUrl;
+    if (tabState?.phase === "faucet" && !!targetFaucetUrl && !isWithdrawPage() && !isDicebetPage() && !hasLoginForm()) {
+      try {
+        const target = new URL(targetFaucetUrl);
+        if (target.hostname === location.hostname && location.href !== targetFaucetUrl) {
+          log("Redirecting back to faucet:", targetFaucetUrl);
+          location.href = targetFaucetUrl;
+          return;
+        }
+      } catch (_) {}
+    }
+    log("Waiting for navigation:", location.href);
+  }
+}
+
+main();
 
 function isPluginTab() {
-  // Retry up to 6 times (3s total) to handle the race where background
-  // hasn't stored the tabId yet when the content script first runs.
   return new Promise(resolve => {
-    let attempts = 0;
-    function handlePluginTabCheckResponse(resp) {
-      if (chrome.runtime.lastError) { resolve(false); return; }
-      if (resp?.yes === true) { resolve(true); return; }
-      attempts++;
-      if (attempts < 6) setTimeout(attempt, 500);
-      else resolve(false);
+    function handleResponse(resp) {
+      if (chrome.runtime.lastError) {
+        log("Error checking plugin tab status:", chrome.runtime.lastError.message);
+        resolve(false);
+        return;
+      }
+      resolve(!!resp?.yes);
     }
-    function attempt() {
-      chrome.runtime.sendMessage({ type: "check-plugin-tab" }, handlePluginTabCheckResponse);
-    }
-    attempt();
+    chrome.runtime.sendMessage({ type: "check-plugin-tab" }, handleResponse);
   });
 }
 
@@ -215,15 +310,7 @@ function startDiceHangWatchdog(diceEnabled) {
 
 // ── Credentials from storage ──────────────────────────────────────────────────
 
-async function getCredentials() {
-  const { settings } = await chrome.storage.local.get("settings");
-  const faucets = settings?.faucets || [];
-  const faucet = faucets.find(f => {
-    try { return new URL(f.url).hostname === location.hostname; } catch { return false; }
-  });
-  // faucet may be missing from stored settings if added after initial install
-  return { username: faucet?.username || "", password: faucet?.password || "" };
-}
+
 
 function triggerInputEvents(input) {
   if (!input) return;
@@ -523,8 +610,17 @@ function readBalance() {
   for (const sel of preferredSelectors) {
     const el = document.querySelector(sel);
     if (!el) continue;
+    
+    // Ignore hidden elements (like placeholders with 0.00000000)
+    if (el.offsetParent === null && !el.classList.contains('user_balance')) {
+      continue;
+    }
+
     const value = parseNumericValue(el.textContent?.trim() || "");
-    if (value != null) return value;
+    if (value != null) {
+      log(`Fetched balance from preferred selector "${sel}": ${value}`);
+      return value;
+    }
   }
 
   const selectors = [
@@ -582,48 +678,7 @@ function scrapeMinimumWithdrawal() {
 // ── Auto-capture login credentials ─────────────────────────────────────────────
 // When user logs in manually without stored credentials, capture and save them
 
-function setupManualLoginCapture() {
-  // Listen for form submission
-  const forms = document.querySelectorAll('form');
-  for (const form of forms) {
-    if (!form.querySelector('input[type="password"]')) continue; // not a login form
-    
-    async function onManualLoginSubmit() {
-      // Get the input values before submission
-      const userInput =
-        form.querySelector('input[type="email"]')   ||
-        form.querySelector('input[name*="user"]')   ||
-        form.querySelector('input[name*="email"]')  ||
-        form.querySelector('input[name*="login"]')  ||
-        form.querySelector('input[type="text"]');
-      
-      const pwdInput = form.querySelector('input[type="password"]');
-      
-      const username = userInput?.value?.trim();
-      const password = pwdInput?.value?.trim();
-      
-      if (username && password) {
-        log(`Captured credentials from manual login: ${username}`);
-        
-        // Save to chrome storage for this site
-        const faucetUrl = await getFaucetUrl();
-        const { settings = {} } = await chrome.storage.local.get('settings');
-        
-        if (settings.faucets) {
-          const faucet = settings.faucets.find(f => sameHost(f.url, faucetUrl));
-          if (faucet) {
-            faucet.username = username;
-            faucet.password = password;
-            await chrome.storage.local.set({ settings });
-            log(`✓ Stored credentials for ${faucet.label}`);
-          }
-        }
-      }
-    }
 
-    form.addEventListener('submit', onManualLoginSubmit, { once: true }); // only listen once
-  }
-}
 
 async function getFaucetUrl() {
   const tabState = await getCurrentTabState();
@@ -681,42 +736,28 @@ async function runLogin() {
     loginScope.querySelector(usernameSelector) ||
     document.querySelector(usernameSelector);
 
-  const creds = await getCredentials();
-  const hasStoredCreds = !!(creds.username && creds.password);
+  log("Waiting for Chrome Password Manager autofill...");
+  // Nudge browser
+  if (userInput) userInput.focus();
+  await sleep(100);
+  if (pwdInput) pwdInput.focus();
 
-  if (hasStoredCreds) {
-    log("✓ Found extension-stored credentials, filling...");
-    if (userInput) {
-      fillInput(userInput, creds.username);
-      await sleep(INPUT_SETTLE_MS);
-    } else {
-      log("Username input not found, continuing with password field only");
+  const autofilled = await waitForPasswordManagerAutofill(userInput, pwdInput);
+  if (!autofilled) {
+    if (hasCaptchaWidget()) {
+      log("Captcha present on login page, trying automatic checkbox click while waiting for manual login");
+      chrome.runtime.sendMessage({ type: "focus-tab" });
+      await sleep(400);
+      tryClickCaptchaWidget();
     }
-    fillInput(pwdInput, creds.password);
-    await sleep(INPUT_SETTLE_MS);
-  } else {
-    log("No extension credentials configured. Trying Chrome Password Manager autofill...");
-    setupManualLoginCapture();
-
-    const autofilled = await waitForPasswordManagerAutofill(userInput, pwdInput);
-    if (!autofilled) {
-      // No autofill available yet — let user login manually. We'll capture on submit.
-      if (hasCaptchaWidget()) {
-        log("Captcha present on login page, trying automatic checkbox click while waiting for manual login");
-        chrome.runtime.sendMessage({ type: "focus-tab" });
-        await sleep(400);
-        tryClickCaptchaWidget();
-      }
-      log("No autofilled credentials detected — waiting for manual login");
-      log("Manual login will be captured for future runs");
-      return;
-    }
-
-    log(`✓ Using Chrome Password Manager autofill for ${autofilled.username || "saved account"}`);
-    triggerInputEvents(userInput);
-    triggerInputEvents(pwdInput);
-    await sleep(INPUT_SETTLE_MS);
+    log("No autofilled credentials detected — waiting for manual login");
+    return;
   }
+
+  log(`✓ Using Chrome Password Manager autofill for ${autofilled.username || "saved account"}`);
+  triggerInputEvents(userInput);
+  triggerInputEvents(pwdInput);
+  await sleep(INPUT_SETTLE_MS);
 
   log("✓ Credentials filled, waiting for page to settle...");
   await sleep(CAPTCHA_SETTLE_MS);
@@ -1363,11 +1404,21 @@ class CombinedHighRollerStrategy {
 
 async function getDicebetConfig() {
   const { settings } = await chrome.storage.local.get("settings");
+  const tabState = await getCurrentTabState();
   const faucets = settings?.faucets || [];
   const faucet = faucets.find(f => {
     try { return new URL(f.url).hostname === location.hostname; } catch { return false; }
   });
-  const diceEnabled = faucet?.dbEnabled === true;
+  
+  // If the background script explicitly set the phase to "dicebet", we treat it as enabled
+  // even if the global setting for this faucet is disabled. This supports "Manual Run Dice".
+  const isManualRun = tabState?.phase === "dicebet";
+  const diceEnabled = isManualRun || faucet?.dbEnabled === true;
+  
+  if (isManualRun && faucet?.dbEnabled !== true) {
+    log("DiceBet manual trigger detected - forcing enabled=true for this session");
+  }
+
   const strategy = normalizeDbStrategy(faucet?.dbStrategy, diceEnabled);
   const parsedChance = parseFloat(faucet?.dbChance || "");
   const normalizedThreshold = normalizeWdThresholdForHost(location.hostname, faucet?.wdThreshold);
@@ -1479,15 +1530,32 @@ function findDicebetMultiplierInput() {
 
 function applyDicebetSide(side) {
   const normalized = normalizeDiceSide(side);
-  if (typeof window.bet_on === "string") {
-    window.bet_on = normalized;
-  }
-  if (typeof window.set_roll_to_win === "function") {
-    window.set_roll_to_win();
-  }
-  if (typeof window.set_slide_bar === "function") {
-    window.set_slide_bar();
-  }
+  
+  runInPageContext((targetSide) => {
+    // 1. Update internal window variable if it exists
+    if (typeof window.bet_on === "string" || typeof window.bet_on === "undefined") {
+      window.bet_on = targetSide;
+    }
+    
+    // 2. Check if we need to call switch_bet_on() to toggle UI state correctly
+    // In litepick.io and similar clones, switch_bet_on toggles between over and under.
+    const label = document.getElementById("roll_to_win_lb");
+    if (label) {
+      const currentText = (label.textContent || "").toLowerCase();
+      const needsSwitch = (targetSide === "higher" && currentText.includes("under")) ||
+                          (targetSide === "lower" && currentText.includes("over"));
+      
+      if (needsSwitch && typeof window.switch_bet_on === "function") {
+        window.switch_bet_on();
+      }
+    }
+
+    // 3. Trigger standard refresh functions if they exist
+    if (typeof window.set_roll_to_win === "function") window.set_roll_to_win();
+    if (typeof window.set_slide_bar === "function") window.set_slide_bar();
+  }, normalized);
+
+  // Still update the label in Isolated world for immediate UI feedback if possible
   const label = document.getElementById("roll_to_win_lb");
   if (label) {
     label.textContent = normalized === "higher" ? "Roll over to win" : "Roll under to win";
@@ -1505,11 +1573,15 @@ function applyDicebetTargets(chance) {
   const chanceInput = findDicebetChanceInput();
   if (chanceInput && Number.isFinite(chance)) {
     setDicebetInputValue(chanceInput, chance.toFixed(2));
-    if (typeof window.change_win_chance === "function") {
-      window.change_win_chance();
-    } else if (typeof window.change_win_chance2 === "function") {
-      window.change_win_chance2(chance);
-    }
+    
+    // Call page functions to update profit/multipliers in the page context
+    runInPageContext((targetChance) => {
+      if (typeof window.change_win_chance === "function") {
+        window.change_win_chance();
+      } else if (typeof window.change_win_chance2 === "function") {
+        window.change_win_chance2(targetChance);
+      }
+    }, chance);
   }
 
   return {
@@ -1533,21 +1605,44 @@ async function waitForDicebetIdle(maxWaitMs = 15000) {
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
     sendPhaseHeartbeat("dice-wait");
-    const autoStatus = typeof window.auto_betting_status === "string" ? window.auto_betting_status : "stopped";
+    
+    // Check page-level status via result bridge
+    const autoStatus = await runInPageContextWithResult(() => {
+      return typeof window.auto_betting_status === "string" ? window.auto_betting_status : "stopped";
+    }).catch(() => "stopped");
+
     if (autoStatus !== "running") return true;
-    await sleep(250);
+    await sleep(400);
   }
   return false;
 }
 
-function placeDicebetRound(side) {
+async function placeDicebetRound(side) {
   applyDicebetSide(side);
 
-  if (typeof window.process_bet_game_dice === "function") {
-    window.process_bet_game_dice();
-    return true;
+  // Trigger win chance update one last time via bridge to be safe
+  const chanceInput = findDicebetChanceInput();
+  if (chanceInput) {
+    const chance = parseFloat(chanceInput.value);
+    if (Number.isFinite(chance)) {
+      runInPageContext((targetChance) => {
+        if (typeof window.change_win_chance === "function") window.change_win_chance();
+      }, chance);
+    }
   }
 
+  // Use bridge to call internal betting function if available
+  const wasHandled = await runInPageContextWithResult(() => {
+    if (typeof window.process_bet_game_dice === "function") {
+      window.process_bet_game_dice();
+      return true;
+    }
+    return false;
+  }).catch(() => false);
+
+  if (wasHandled) return true;
+
+  // Fallback: direct click on the button
   const betButton = findDicebetBetButton();
   if (!betButton) return false;
   betButton.focus();
@@ -1608,16 +1703,16 @@ async function runAllIn001Dicebet(side, threshold, chance) {
   const targetSnapshot = applyDicebetTargets(allInChance);
   applyDicebetSide(side);
   setDicebetInputValue(amountInput, balanceBefore.toFixed(8));
-  if (typeof window.change_bet_amount === "function") {
-    window.change_bet_amount();
-  }
+  runInPageContext(() => {
+    if (typeof window.change_bet_amount === "function") window.change_bet_amount();
+  });
   log(
     `Placing ALL-IN ${balanceBefore.toFixed(8)} | chance=${allInChance.toFixed(2)}%` +
     ` | appliedChance=${Number.isFinite(targetSnapshot.appliedChance) ? targetSnapshot.appliedChance.toFixed(2) : "n/a"}` +
     ` | appliedPayout=${Number.isFinite(targetSnapshot.appliedMultiplier) ? targetSnapshot.appliedMultiplier.toFixed(2) : "n/a"}`
   );
 
-  const started = placeDicebetRound(side);
+  const started = await placeDicebetRound(side);
   if (!started) {
     log("ERROR: Failed to trigger all-in dice round");
     sendError("dicebet-round-not-started");
@@ -1667,12 +1762,14 @@ async function runDicebet() {
     return false;
   }
 
-  const threshold = toFiniteNumber(config.wdThreshold, 0);
-  if (threshold <= 0) {
-    log("ERROR: DiceBet WD threshold must be greater than 0");
-    sendError("dicebet-invalid-threshold");
-    return false;
-  }
+    const threshold = toFiniteNumber(config.wdThreshold, 0);
+    if (threshold <= 0) {
+      log("ERROR: DiceBet WD threshold must be greater than 0");
+      sendError("dicebet-invalid-threshold");
+      return false;
+    }
+    
+
 
   const side = normalizeDiceSide(config.side);
   const strategyType = normalizeDbStrategy(config.strategy, true);
@@ -1717,6 +1814,8 @@ async function runDicebet() {
     sendError("dicebet-no-balance-before-bet");
     return false;
   }
+
+  log(`Starting DiceBet session: balance=${startBalance.toFixed(8)}, target=${threshold.toFixed(8)}`);
 
   strategy.initialize(startBalance);
   log(`DiceBet config loaded: side=${side}, baseChance=${chance}%, threshold=${threshold}`);
@@ -1791,9 +1890,9 @@ async function runDicebet() {
     const targetSnapshot = applyDicebetTargets(activeChance);
     applyDicebetSide(side);
     setDicebetInputValue(activeAmountInput, nextBet.toFixed(8));
-    if (typeof window.change_bet_amount === "function") {
-      window.change_bet_amount();
-    }
+    runInPageContext(() => {
+      if (typeof window.change_bet_amount === "function") window.change_bet_amount();
+    });
     log(
       `Placing bet ${nextBet.toFixed(8)} | chance=${activeChance.toFixed(2)}%${isRandom14Round ? " [RANDOM-14]" : ""}` +
       ` | appliedChance=${Number.isFinite(targetSnapshot.appliedChance) ? targetSnapshot.appliedChance.toFixed(2) : "n/a"}` +
@@ -1801,7 +1900,7 @@ async function runDicebet() {
       ` | mode=${strategy.mode} | streak=${strategy.win_streak} | ladderStep=${strategy.ladder_step + 1}`
     );
 
-    const started = placeDicebetRound(side);
+    const started = await placeDicebetRound(side);
     if (!started) {
       log("Dice bet trigger not ready yet; retrying without closing tab.");
       await sleep(2000);
@@ -1877,15 +1976,19 @@ async function runWithdraw(address) {
       resolveWhenReady();
     }
 
-    function pollForJQuery() {
-      if (window.$ || window.jQuery) finishWaitForJQuery();
+    async function pollForJQuery() {
+      const hasJQuery = await runInPageContextWithResult(() => {
+        return !!(window.$ || window.jQuery);
+      }).catch(() => false);
+      if (hasJQuery) finishWaitForJQuery();
     }
 
     intervalId = setInterval(pollForJQuery, 200);
     timeoutId = setTimeout(finishWaitForJQuery, 8000); // max 8s
   });
   await sleep(500);
-  log("jQuery available:", !!window.$);
+  const hasJQuery = await runInPageContextWithResult(() => !!(window.$ || window.jQuery)).catch(() => false);
+  log("jQuery available:", hasJQuery);
 
   // ── Scrape minimum withdrawal threshold ──
   const minWd = scrapeMinimumWithdrawal();
@@ -1903,8 +2006,15 @@ async function runWithdraw(address) {
 
   addrEl.focus();
   // Use jQuery val() if available (works for both input and textarea)
-  if (window.$ && $(addrEl).val) {
-    $(addrEl).val(address).trigger('input').trigger('change');
+  if (hasJQuery) {
+    runInPageContext((addr) => {
+      const addrEl = document.getElementById('withdrawal_address') ||
+        document.querySelector('[name*="address" i]') ||
+        document.querySelector('[id*="address" i]');
+      if (addrEl && window.$ && $(addrEl).val) {
+        $(addrEl).val(addr).trigger('input').trigger('change');
+      }
+    }, address);
   } else {
     // Native setter — handle both input and textarea
     const proto = addrEl instanceof HTMLTextAreaElement
@@ -1922,8 +2032,13 @@ async function runWithdraw(address) {
   // ── Set max amount ──
   const maxBtn = document.getElementById('max_amount');
   if (maxBtn) {
-    if (window.$) $('#max_amount').trigger('click');
-    else maxBtn.click();
+    if (hasJQuery) {
+      runInPageContext(() => {
+        if (window.$) $('#max_amount').trigger('click');
+      });
+    } else {
+      maxBtn.click();
+    }
     await sleep(300);
     log("Clicked max_amount");
   }
@@ -1965,80 +2080,8 @@ async function runWithdraw(address) {
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
-async function main() {
-  console.log("[FaucetPlugin] Content script loaded on:", location.href);
-  
-  await sleep(1000); // let page and JS frameworks settle
-
-  // GUARD: do nothing if the user opened this page manually
-  console.log("[FaucetPlugin] Checking if this is a plugin tab...");
-  const pluginTab = await isPluginTab();
-  if (!pluginTab) {
-    log("Not a plugin tab — standing by (manual visit)");
-    return;
-  }
-  
-  console.log("[FaucetPlugin] ✓ This is a plugin-opened tab!");
-
-  // DiceBet page: user navigated here from faucet page after claim
-  if (isDicebetPage()) {
-    log("Detected dicebet page");
-    const config = await getDicebetConfig();
-    log(`DiceBet config: enabled=${config.enabled}, strategy=${config.strategy}, side=${config.side}, chance=${config.chance}%, wd_threshold=${config.wdThreshold}`);
-    const shouldWithdraw = await runDicebet();
-    if (shouldWithdraw) {
-      log("DiceBet succeeded and balance reached threshold, proceeding to withdrawal");
-      // Don't navigate here—let background handle it through normal flow
-      // Instead, close the tab and let background know to proceed with withdrawal
-      sendDone(readBalance());
-    } else {
-      log("DiceBet failed or threshold not met");
-      sendError("dicebet-failed");
-    }
-    return;
-  }
-
-  // Withdraw tab: background already navigated us here after a successful claim
-  const wdInfo = await getWithdrawInfo();
-  if (wdInfo.isWithdrawTab) {
-    log("Detected withdrawal tab");
-    await runWithdraw(wdInfo.address);
-    return;
-  }
-
-  console.log("[FaucetPlugin] Checking page type...");
-  if (hasLoginForm()) {
-    log("Detected login page");
-    await runLogin();
-  } else if (isFaucetPage()) {
-    log("Detected faucet page");
-    await runFaucet();
-  } else {
-    const tabState = await getCurrentTabState();
-    const targetFaucetUrl = tabState?.faucetUrl;
-    const canRecoverToFaucet =
-      tabState?.phase === "faucet" &&
-      !!targetFaucetUrl &&
-      !isWithdrawPage() &&
-      !isDicebetPage() &&
-      !hasLoginForm();
-
-    if (canRecoverToFaucet) {
-      try {
-        const target = new URL(targetFaucetUrl);
-        if (target.hostname === location.hostname && location.href !== targetFaucetUrl) {
-          log("Unrecognised page in faucet phase — redirecting back to faucet:", targetFaucetUrl);
-          location.href = targetFaucetUrl;
-          return;
-        }
-      } catch (_) {}
-    }
-
-    log("Unrecognised page — waiting for navigation:", location.href);
-  }
-}
-
 console.log("[FaucetPlugin] Content script executing for:", window.location.hostname);
+
 function handleMainError(err) {
   console.error("[FaucetPlugin] Unhandled error:", err);
   log("Unhandled error:", err);
