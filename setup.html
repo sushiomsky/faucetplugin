@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Astra Yield | Deployment Protocol</title>
+  <title>Astra Yield | Onboarding Wizard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
@@ -11,8 +11,8 @@
     :root {
       --bg: #05050a;
       --panel: rgba(20, 20, 35, 0.6);
-      --accent: #f0b90b;
-      --accent-glow: rgba(240, 185, 11, 0.4);
+      --accent: #4a90e2; /* Blue accent for wizard as in mockup */
+      --accent-glow: rgba(74, 144, 226, 0.4);
       --text: #ffffff;
       --text-dim: #9aa0b8;
       --glass: rgba(255, 255, 255, 0.03);
@@ -32,192 +32,217 @@
       min-height: 100vh;
       overflow: hidden;
       background-image: 
-        radial-gradient(circle at 10% 20%, rgba(240, 185, 11, 0.08) 0%, transparent 40%),
-        radial-gradient(circle at 90% 80%, rgba(0, 255, 136, 0.05) 0%, transparent 40%);
+        radial-gradient(circle at 10% 20%, rgba(74, 144, 226, 0.05) 0%, transparent 40%),
+        radial-gradient(circle at 90% 80%, rgba(138, 43, 226, 0.05) 0%, transparent 40%);
     }
 
     .wizard-container {
       width: 100%;
-      max-width: 650px;
+      max-width: 480px;
       padding: 40px;
       background: var(--panel);
-      backdrop-filter: blur(20px);
+      backdrop-filter: blur(40px);
       border: 1px solid var(--glass-border);
-      border-radius: 32px;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      border-radius: 40px;
+      box-shadow: 0 40px 100px -20px rgba(0, 0, 0, 0.8);
       position: relative;
+      text-align: center;
     }
 
-    .progress-bar {
+    .wizard-steps {
       display: flex;
+      justify-content: center;
       gap: 12px;
-      margin-bottom: 40px;
+      margin: 24px 0;
     }
-    .progress-step {
-      flex: 1;
-      height: 6px;
-      background: var(--glass);
-      border-radius: 10px;
-      position: relative;
-      overflow: hidden;
+    .wizard-dot {
+      width: 10px;
+      height: 10px;
+      background: #333;
+      border-radius: 50%;
+      transition: all 0.3s;
     }
-    .progress-step.active::after {
-      content: '';
-      position: absolute;
-      inset: 0;
+    .wizard-dot.active {
+      background: #fff;
+      box-shadow: 0 0 15px rgba(255,255,255,0.4);
+      transform: scale(1.2);
+    }
+    .wizard-dot.completed {
       background: var(--accent);
-      box-shadow: 0 0 10px var(--accent-glow);
     }
 
-    .step-content { display: none; }
-    .step-content.active { display: block; animation: fadeIn 0.5s ease-out; }
+    .step-content { display: none; height: 350px; flex-direction: column; }
+    .step-content.active { display: flex; animation: slideUp 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
 
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(10px); }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(20px); }
       to { opacity: 1; transform: translateY(0); }
     }
 
-    h1 { font-size: 32px; font-weight: 700; margin-bottom: 12px; background: linear-gradient(90deg, #f0b90b, #ffe580); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-    p.desc { color: var(--text-dim); margin-bottom: 30px; line-height: 1.6; }
+    .hero-icon { font-size: 80px; margin-bottom: 20px; filter: drop-shadow(0 0 20px rgba(0,0,0,0.5)); }
+    h1 { font-size: 32px; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.5px; }
+    .sub { color: var(--text-dim); font-size: 16px; margin-bottom: 30px; }
 
-    /* Site Selection Grid */
-    .site-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 15px;
+    /* Site Selection Toggles */
+    .selection-panel {
+      background: rgba(0,0,0,0.2);
+      border-radius: 24px;
+      padding: 15px;
       margin-bottom: 30px;
-    }
-    .site-card {
-      background: var(--glass);
+      flex: 1;
+      overflow-y: auto;
       border: 1px solid var(--glass-border);
-      border-radius: 20px;
-      padding: 20px;
-      text-align: center;
-      cursor: pointer;
-      transition: all 0.3s;
-      position: relative;
     }
-    .site-card:hover { border-color: rgba(240, 185, 11, 0.4); background: rgba(255,255,255,0.05); }
-    .site-card.selected { border-color: var(--accent); background: rgba(240, 185, 11, 0.05); }
-    .site-card.selected::before {
-      content: '✓';
-      position: absolute;
-      top: 10px; right: 10px;
-      color: var(--accent);
-      font-weight: 700;
-    }
-    .site-icon { font-size: 24px; margin-bottom: 8px; }
-    .site-name { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+    .selection-panel::-webkit-scrollbar { width: 4px; }
+    .selection-panel::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 10px; }
 
-    /* Wallet Inputs */
-    .wallet-list { display: flex; flex-direction: column; gap: 15px; max-height: 300px; overflow-y: auto; padding-right: 10px; }
-    .wallet-item {
-      background: var(--glass);
-      border: 1px solid var(--glass-border);
-      border-radius: 20px;
-      padding: 15px 20px;
+    .site-toggle-row {
       display: flex;
       align-items: center;
-      gap: 15px;
-    }
-    .wallet-info { flex: 1; }
-    .wallet-label { font-size: 11px; color: var(--text-dim); font-weight: 600; text-transform: uppercase; margin-bottom: 5px; }
-    input[type="text"] {
-      width: 100%;
-      background: rgba(0,0,0,0.2);
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: var(--glass);
       border: 1px solid var(--glass-border);
-      border-radius: 12px;
-      padding: 12px 15px;
-      color: #fff;
-      font-family: inherit;
-      font-size: 13px;
+      border-radius: 16px;
+      margin-bottom: 8px;
     }
-    input:focus { border-color: var(--accent); outline: none; }
+    .site-info { display: flex; align-items: center; gap: 12px; }
+    .site-ico { width: 24px; font-size: 14px; }
+    .site-lbl { font-size: 14px; font-weight: 600; }
 
     /* Navigation Buttons */
-    .nav-btns { display: flex; justify-content: flex-end; gap: 15px; margin-top: 40px; }
-    .btn {
-      padding: 14px 28px;
-      border-radius: 16px;
+    .wizard-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 15px;
+    }
+    .btn-text { background: none; border: none; color: var(--text-dim); font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; }
+    .btn-text:hover { color: #fff; }
+    
+    .btn-p {
+      flex: 1;
+      background: var(--accent);
+      color: #fff;
+      padding: 16px;
+      border-radius: 50px;
       font-family: inherit;
       font-size: 15px;
-      font-weight: 600;
-      cursor: pointer;
+      font-weight: 700;
       border: none;
+      cursor: pointer;
+      box-shadow: 0 10px 30px var(--accent-glow);
       transition: all 0.3s;
+      text-transform: uppercase;
+      letter-spacing: 1px;
     }
-    .btn-secondary { background: var(--glass); color: var(--text); }
-    .btn-secondary:hover { background: rgba(255,255,255,0.08); }
-    .btn-primary { background: var(--accent); color: #000; box-shadow: 0 10px 20px var(--accent-glow); }
-    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 15px 30px var(--accent-glow); }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn-p:hover { transform: translateY(-3px); box-shadow: 0 15px 40px var(--accent-glow); }
+    .btn-p:disabled { opacity: 0.3; transform: none; box-shadow: none; }
 
-    /* Scrollbar */
-    .wallet-list::-webkit-scrollbar { width: 4px; }
-    .wallet-list::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 10px; }
+    /* Inputs */
+    .input-field {
+      width: 100%;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
+      padding: 15px;
+      color: #fff;
+      font-family: inherit;
+      font-size: 14px;
+      margin-bottom: 15px;
+      text-align: center;
+    }
+    .input-field:focus { border-color: var(--accent); outline: none; }
 
-    /* Welcome / Success page specific */
-    .hero-icon { font-size: 64px; margin-bottom: 24px; text-align: center; }
-    .center-content { text-align: center; }
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 22px;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #333;
+      transition: .4s;
+      border-radius: 20px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 16px; width: 16px;
+      left: 3px; bottom: 3px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+    input:checked + .slider { background-color: var(--accent); }
+    input:checked + .slider:before { transform: translateX(18px); }
   </style>
 </head>
 <body>
 
   <div class="wizard-container">
-    <div class="progress-bar">
-      <div class="progress-step active" id="p1"></div>
-      <div class="progress-step" id="p2"></div>
-      <div class="progress-step" id="p3"></div>
-      <div class="progress-step" id="p4"></div>
+    <div class="hero-icon">🚀</div>
+    <h1>Astra Yield</h1>
+    <p class="sub">Onboarding Wizard</p>
+
+    <div class="wizard-steps">
+      <div class="wizard-dot active" id="dot1"></div>
+      <div class="wizard-dot" id="dot2"></div>
+      <div class="wizard-dot" id="dot3"></div>
+      <div class="wizard-dot" id="dot4"></div>
     </div>
 
     <!-- STEP 1: WELCOME -->
     <section class="step-content active" id="step1">
-      <div class="center-content">
-        <div class="hero-icon">💎</div>
-        <h1>Astra Yield Protocol</h1>
-        <p class="desc">The most advanced multi-chain yield optimization engine. Deploy your node configuration in less than 60 seconds.</p>
-        <div class="nav-btns">
-          <button class="btn btn-primary" id="welcomeContinueBtn">Initiate Deployment</button>
-        </div>
+      <div style="flex:1; display:flex; flex-direction:column; justify-content:center;">
+        <h2 style="margin-bottom:15px;">Welcome Node Operator</h2>
+        <p style="color:var(--text-dim); line-height:1.6;">Initialize your multi-chain yield synchronization node in less than 60 seconds.</p>
+      </div>
+      <div class="wizard-footer">
+        <button class="btn-text">Manual</button>
+        <button class="btn-p" id="welcomeBtn">Continue ➔</button>
+        <button class="btn-text">Skip</button>
       </div>
     </section>
 
-    <!-- STEP 2: SITE SELECTION -->
+    <!-- STEP 2: NETWORKS -->
     <section class="step-content" id="step2">
-      <h1>Select Faucets</h1>
-      <p class="desc">Choose which sites you want the bot to automate. You can change these later in settings.</p>
-      <div class="site-grid" id="siteGrid">
-        <!-- Injected via setup.js -->
+      <h2 style="margin-bottom:15px; font-size:18px;">Enable Your Networks</h2>
+      <div class="selection-panel" id="siteGrid">
+        <!-- Site toggles injected via setup.js -->
       </div>
-      <div class="nav-btns">
-        <button class="btn btn-secondary step-back-btn">Back</button>
-        <button class="btn btn-primary" id="siteNextBtn" disabled>Next</button>
+      <div class="wizard-footer">
+        <button class="btn-text step-back-btn">Back</button>
+        <button class="btn-p" id="siteNextBtn">Continue ➔</button>
+        <button class="btn-text">All</button>
       </div>
     </section>
 
-    <!-- STEP 3: WALLET CONFIG -->
+    <!-- STEP 3: WALLETS -->
     <section class="step-content" id="step3">
-      <h1>Asset Distribution</h1>
-      <p class="desc">Define your target deployment wallets. We recommend non-custodial addresses for maximum protocol security.</p>
-      <div class="wallet-list" id="walletList">
-        <!-- Injected via setup.js -->
+      <h2 style="margin-bottom:15px; font-size:18px;">Asset Distribution</h2>
+      <div class="selection-panel" id="walletList">
+        <!-- Wallet inputs injected via setup.js -->
       </div>
-      <div class="nav-btns">
-        <button class="btn btn-secondary step-back-btn">Back</button>
-        <button class="btn btn-primary step-next-btn">Done</button>
+      <div class="wizard-footer">
+        <button class="btn-text step-back-btn">Back</button>
+        <button class="btn-p step-next-btn">Deploy Protocol ➔</button>
       </div>
     </section>
 
     <!-- STEP 4: FINISH -->
     <section class="step-content" id="step4">
-      <div class="center-content">
-        <div class="hero-icon">🚀</div>
-        <h1>Protocol Active!</h1>
-        <p class="desc">Astra Yield is now synchronized and ready for execution. Your node will now begin autonomous asset optimization.</p>
-        <div class="nav-btns" style="justify-content: center;">
-          <button class="btn btn-primary" style="width: 100%;" id="launchBtn">Activate Node Dashboard</button>
-        </div>
+      <div style="flex:1; display:flex; flex-direction:column; justify-content:center;">
+        <div class="hero-icon" style="font-size:64px;">💎</div>
+        <h2 style="margin-bottom:10px;">Protocol Operational</h2>
+        <p style="color:var(--text-dim); line-height:1.6;">Your Astra Node is now synchronized and ready for autonomous optimization.</p>
+      </div>
+      <div class="wizard-footer" style="justify-content:center;">
+        <button class="btn-p" id="launchBtn" style="width:100%;">Activate Dashboard ➔</button>
       </div>
     </section>
   </div>

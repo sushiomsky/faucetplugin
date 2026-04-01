@@ -5,9 +5,10 @@ window.addEventListener('DOMContentLoaded', () => {
   const faucets = typeof makeFaucetDefaults === 'function' ? makeFaucetDefaults() : [];
 
   function updateProgress() {
-    document.querySelectorAll('.progress-step').forEach((step, i) => {
-      if (i + 1 <= currentStep) step.classList.add('active');
-      else step.classList.remove('active');
+    document.querySelectorAll('.wizard-dot').forEach((dot, i) => {
+      dot.classList.remove('active', 'completed');
+      if (i + 1 < currentStep) dot.classList.add('completed');
+      if (i + 1 === currentStep) dot.classList.add('active');
     });
   }
 
@@ -36,18 +37,24 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!grid) return;
     grid.innerHTML = '';
     faucets.forEach((f, i) => {
-      const card = document.createElement('div');
-      card.className = 'site-card' + (f.active ? ' selected' : '');
-      card.innerHTML = `
-        <div class="site-icon">${f.label[0].toUpperCase()}</div>
-        <div class="site-name">${f.label}</div>
+      const row = document.createElement('div');
+      row.className = 'site-toggle-row';
+      row.innerHTML = `
+        <div class="site-info">
+          <span class="site-ico">${f.label[0].toUpperCase()}</span>
+          <span class="site-lbl">${f.label}</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" ${f.active ? 'checked' : ''}>
+          <span class="slider"></span>
+        </label>
       `;
-      card.addEventListener('click', () => {
-        f.active = !f.active;
-        card.classList.toggle('selected');
+      const input = row.querySelector('input');
+      input.addEventListener('change', () => {
+        f.active = input.checked;
         updateSiteNextBtn();
       });
-      grid.appendChild(card);
+      grid.appendChild(row);
     });
     updateSiteNextBtn();
   }
@@ -65,24 +72,21 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!list) return;
     list.innerHTML = '';
     faucets.filter(f => f.active).forEach((f, i) => {
-      const item = document.createElement('div');
-      item.className = 'wallet-item';
-      item.innerHTML = `
-        <div class="wallet-icon">${f.label[0].toUpperCase()}</div>
-        <div class="wallet-info">
-          <div class="wallet-label">${f.label} address</div>
-          <input type="text" placeholder="Enter address" value="${f.wdAddress || ''}" id="addr-${f.label}">
-        </div>
+      const field = document.createElement('div');
+      field.style = "margin-bottom:15px;";
+      field.innerHTML = `
+        <div style="font-size:10px; font-weight:700; color:var(--text-dim); text-transform:uppercase; margin-bottom:6px; text-align:left; padding-left:10px;">${f.label} Deployment Address</div>
+        <input type="text" class="input-field" style="margin-bottom:0;" placeholder="Enter address..." value="${f.wdAddress || ''}" id="addr-${f.label}">
       `;
-      const input = item.querySelector('input');
+      const input = field.querySelector('input');
       input.addEventListener('input', () => {
         f.wdAddress = input.value.trim();
       });
-      list.appendChild(item);
+      list.appendChild(field);
     });
     
     if (list.innerHTML === '') {
-      list.innerHTML = '<p style="text-align:center; color:var(--text-dim); padding: 20px;">No sites selected.</p>';
+      list.innerHTML = '<p style="text-align:center; color:var(--text-dim); padding: 40px;">No networks activated.</p>';
     }
   }
 
@@ -90,7 +94,8 @@ window.addEventListener('DOMContentLoaded', () => {
     try {
       const settings = {
         enabled: true,
-        faucets: faucets
+        faucets: faucets,
+        nodeName: "Astra-Node"
       };
       
       await chrome.storage.local.set({ 
@@ -99,18 +104,15 @@ window.addEventListener('DOMContentLoaded', () => {
         setupComplete: true 
       });
       
-      // Tell background to start
       chrome.runtime.sendMessage({ type: "save-settings", settings });
-      
-      // Close window
       window.close();
     } catch (err) {
-      console.error("Setup failed:", err);
+      console.error("Critical: Onboarding failed", err);
     }
   }
 
   // Bind Events
-  const welcomeBtn = document.getElementById('welcomeContinueBtn');
+  const welcomeBtn = document.getElementById('welcomeBtn');
   if (welcomeBtn) welcomeBtn.addEventListener('click', nextStep);
 
   const siteNextBtn = document.getElementById('siteNextBtn');
