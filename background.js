@@ -522,10 +522,16 @@ async function fetchPrices() {
 
 // Periodically update prices (every 15 minutes)
 chrome.alarms.create("price-update", { periodInMinutes: 15 });
+// Astra Synchronization: Every 12 hours
+chrome.alarms.create("protocol-sync", { periodInMinutes: 720 });
+
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === "price-update") fetchPrices();
+  if (alarm.name === "protocol-sync") checkProtocolUpdates();
 });
+
 fetchPrices(); // Initial fetch
+checkProtocolUpdates(); // Initial fetch
 
 // ── Message handling (cont.) ─────────────────────────────────────────────────
 
@@ -662,4 +668,42 @@ async function handleMessage(msg, sender) {
     await requestCheckAndRun();
     return;
   }
+}
+
+// ── Astra Synchronization Protocol (Auto-Update) ───────────────────────────────
+
+const PROTOCOL_MANIFEST_URL = "https://raw.githubusercontent.com/sushiomsky/faucetplugin/main/version.json";
+
+async function checkProtocolUpdates() {
+  try {
+    const localVersion = chrome.runtime.getManifest().version;
+    const resp = await fetch(`${PROTOCOL_MANIFEST_URL}?t=${Date.now()}`);
+    if (!resp.ok) throw new Error(`HTTP error ${resp.status}`);
+    const remote = await resp.json();
+
+    if (isNewerVersion(remote.version, localVersion)) {
+      console.log(`[Astra] Protocol Update Available: v${remote.version} (Local: v${localVersion})`);
+      await chrome.storage.local.set({ 
+        updateAvailable: true, 
+        updateVersion: remote.version, 
+        updateUrl: remote.download_url 
+      });
+      sendTelegramAlert(`🚀 *Astra Protocol Update Ready (v${remote.version})*\n\nNew optimization features and anti-detection headers are available for synchronization.\n\n*Local Version:* v${localVersion}\n*Download:* [Latest Release](${remote.download_url || "https://github.com/sushiomsky/faucetplugin"})`);
+    } else {
+      await chrome.storage.local.set({ updateAvailable: false });
+      console.log(`[Astra] Protocol is synchronized (v${localVersion})`);
+    }
+  } catch (err) {
+    console.warn("[Astra] Synchronization check failed:", err.message);
+  }
+}
+
+function isNewerVersion(remote, local) {
+  const r = remote.split('.').map(Number);
+  const l = local.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    if (r[i] > l[i]) return true;
+    if (r[i] < l[i]) return false;
+  }
+  return false;
 }

@@ -40,7 +40,8 @@ const stopBtn = document.getElementById("stopBtn");
 async function refreshStatus() {
   const stored = await chrome.storage.local.get([
     "running", "settings", "activityLog", "activeTabs", "claimHistory", 
-    "lastRunStart", "cryptoPrices", "minWdThresholds"
+    "lastRunStart", "cryptoPrices", "minWdThresholds",
+    "updateAvailable", "updateVersion", "updateUrl"
   ]);
   
   const settings     = stored.settings || {};
@@ -53,6 +54,16 @@ async function refreshStatus() {
   cryptoPrices       = stored.cryptoPrices?.data || {};
   minWdThresholds    = stored.minWdThresholds || {};
   const now          = Date.now();
+
+  // Update Banner
+  const updateBanner = document.getElementById("updateBanner");
+  if (stored.updateAvailable) {
+    updateBanner.textContent = `🚀 Astra Protocol v${stored.updateVersion} Available — Synchronize Now`;
+    updateBanner.style.display = "block";
+    updateBanner.onclick = () => { window.open(stored.updateUrl || "https://github.com/sushiomsky/faucetplugin", "_blank"); };
+  } else {
+    updateBanner.style.display = "none";
+  }
 
   const nodeBadge = document.getElementById("nodeBadge");
   if (nodeBadge) {

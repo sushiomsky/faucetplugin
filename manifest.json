@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Faucet Pro: Multi-Chain Yield Optimizer",
-  "version": "2.3.0",
-  "description": "The premier multi-chain yield optimization protocol for professional-grade automated faucet claiming. Featuring Cluster-Aware scheduling and Alpha Heuristics.",
+  "version": "2.4.0",
+  "description": "The premier multi-chain yield optimization protocol for professional-grade automated faucet claiming. Featuring Astra Protocol Synchronization.",
   "permissions": [
     "tabs",
     "alarms",
