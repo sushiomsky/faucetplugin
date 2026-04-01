@@ -1,13 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Faucet Auto-Claimer Pro",
-  "version": "2.0",
-  "description": "Production-ready Faucet Pro: Auto-claims with premium UI and enhanced security.",
-  "icons": {
-    "16": "icons/icon_16.png",
-    "48": "icons/icon_48.png",
-    "128": "icons/icon_128.png"
-  },
+  "name": "Faucet Pro: Multi-Chain Yield Optimizer",
+  "version": "2.3.0",
+  "description": "The premier multi-chain yield optimization protocol for professional-grade automated faucet claiming. Featuring Cluster-Aware scheduling and Alpha Heuristics.",
   "permissions": [
     "tabs",
     "alarms",
@@ -16,31 +11,31 @@
     "debugger"
   ],
   "host_permissions": [
-    "https://litepick.io/*",
-    "https://dogepick.io/*",
-    "https://solpick.io/*",
-    "https://bnbpick.io/*",
-    "https://tronpick.io/*",
-    "https://polpick.io/*"
+    "<all_urls>"
   ],
+  "icons": {
+    "16": "icons/icon_16.png",
+    "48": "icons/icon_48.png",
+    "128": "icons/icon_128.png"
+  },
   "background": {
     "service_worker": "background.js"
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Faucet Auto-Claimer"
+    "default_title": "Faucet Pro",
+    "default_icon": {
+      "16": "icons/icon_16.png",
+      "48": "icons/icon_48.png",
+      "128": "icons/icon_128.png"
+    }
   },
   "content_scripts": [
     {
       "matches": [
-        "https://litepick.io/*",
-        "https://dogepick.io/*",
-        "https://solpick.io/*",
-        "https://bnbpick.io/*",
-        "https://tronpick.io/*",
-        "https://polpick.io/*"
+        "<all_urls>"
       ],
-      "js": ["constants.js", "content.js"],
+      "js": ["constants.js", "crypto-utils.js", "selectors.js", "utils.js", "captcha.js", "auth.js", "dice.js", "faucet.js", "withdraw.js", "content.js"],
       "run_at": "document_idle"
     }
   ]

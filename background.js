@@ -1,12 +1,20 @@
 importScripts('constants.js');
+const ALARM_NAME = "faucet-tick"; 
+const SITE_PHASE_TIMEOUT_MS = 20 * 60 * 1000;
+const DEBUG = false;
 
-const ALARM_NAME = "faucet-tick"; // fires every minute to check what's due
-const SITE_PHASE_TIMEOUT_MS = 20 * 60 * 1000; // force-advance stuck site after 20 minutes
+function log(...a) { if (DEBUG) console.log("[FaucetPro:BG]", ...a); }
 
 // Multi-site configuration: all enabled faucets are queued sequentially
 const DEFAULT_SETTINGS = {
   enabled: true,
-  faucets: makeFaucetDefaults()
+  faucets: makeFaucetDefaults(),
+  customFaucets: [],
+  longBreakEnabled: DEFAULT_LONG_BREAK_ENABLED,
+  longBreakFrequency: DEFAULT_LONG_BREAK_FREQUENCY,
+  longBreakMin: DEFAULT_LONG_BREAK_MIN,
+  longBreakMax: DEFAULT_LONG_BREAK_MAX,
+  nodeName: DEFAULT_NODE_NAME
 };
 
 async function getSettings() {
@@ -18,7 +26,11 @@ async function getSettings() {
   const storedByUrl = {};
   for (const f of storedFaucets) { if (f.url) storedByUrl[f.url] = f; }
   
-  const faucets = DEFAULT_SETTINGS.faucets.map(def => {
+  const defaultFaucets = DEFAULT_SETTINGS.faucets;
+  const customFaucets = s.customFaucets || [];
+  const allBaseFaucets = [...defaultFaucets, ...customFaucets];
+  
+  const faucets = allBaseFaucets.map(def => {
     const merged = { ...def, ...(storedByUrl[def.url] || {}) };
     const dbEnabled = merged.dbEnabled === true;
     const normalizedStrategy = normalizeDbStrategy(merged.dbStrategy, dbEnabled);
@@ -34,8 +46,10 @@ async function getSettings() {
   return { ...DEFAULT_SETTINGS, ...s, faucets };
 }
 
-function getWithdrawUrl(faucetUrl) {
-  try { return new URL(faucetUrl).origin + "/withdraw.php"; } catch { return null; }
+function getWithdrawUrl(f) {
+  if (!f) return null;
+  if (f.withdrawUrl) return f.withdrawUrl;
+  try { return new URL(f.url).origin + "/withdraw.php"; } catch { return null; }
 }
 
 function sameHost(a, b) {
@@ -106,9 +120,9 @@ async function checkAndRun(forceAll = false) {
   const schedulerRunning = state.running === true;
   const now = Date.now();
 
-  console.log("[Faucet] Checking faucets...", s.faucets.length, "configured");
-  console.log("[Faucet] Currently active tabs:", Object.keys(activeTabs).length);
-  console.log("[Faucet] Queue length:", claimQueue.length);
+  log("[Faucet] Checking faucets...", s.faucets.length, "configured");
+  log("[Faucet] Currently active tabs:", Object.keys(activeTabs).length);
+  log("[Faucet] Queue length:", claimQueue.length);
 
   // Prune stale activeTabs entries whose tabs no longer exist
   const allTabIds = (await chrome.tabs.query({})).map(t => t.id);
@@ -219,9 +233,21 @@ async function checkAndRun(forceAll = false) {
     const lastClaimed = claimHistory[f.url] || 0;
     const intervalMs  = (f.intervalMinutes || 61) * 60 * 1000;
     
-    // Calculate random offset once per cycle or use a stored scheduled time
-    const minRand = (f.minRandomMinutes || 0) * 60 * 1000;
-    const maxRand = (f.maxRandomMinutes || 5) * 60 * 1000;
+    // Check for Long Break
+    const { claimCounts = {} } = await chrome.storage.local.get("claimCounts");
+    const count = claimCounts[f.url] || 0;
+    const isLongBreakDue = s.longBreakEnabled && (count > 0) && (count % s.longBreakFrequency === 0);
+    
+    // Calculate random offset
+    let minRand = (f.minRandomMinutes || 0) * 60 * 1000;
+    let maxRand = (f.maxRandomMinutes || 5) * 60 * 1000;
+    
+    if (isLongBreakDue) {
+      minRand = (s.longBreakMin || 65) * 60 * 1000;
+      maxRand = (s.longBreakMax || 80) * 60 * 1000;
+      log(`[Faucet] ${f.url} — Entering Long Break (${minRand/60000}-${maxRand/60000} min)`);
+    }
+
     const randomOffset = Math.floor(Math.random() * (maxRand - minRand + 1)) + minRand;
     
     const isDue       = forceAll || (now - lastClaimed) >= (intervalMs + randomOffset);
@@ -258,7 +284,7 @@ async function checkAndRun(forceAll = false) {
       console.log(`[Faucet] ✓ Opened tab ${tab.id} for ${nextUrl}`);
       activeTabs[tab.id] = { faucetUrl: nextUrl, phase: "faucet", startedAt: Date.now(), phaseStartedAt: Date.now() };
       await chrome.storage.local.set({ activeTabs, claimQueue, running: true, lastRunStart: Date.now() });
-      console.log(`[Faucet] ✓ Stored tab ${tab.id} in activeTabs`);
+      log(`[Faucet] ✓ Stored tab ${tab.id} in activeTabs`);
     } catch (err) {
       console.error(`[Faucet] ✗ ERROR opening ${nextUrl}:`, err.message);
       if (err.message.includes('no permission') || err.message.includes('No host permission')) {
@@ -401,122 +427,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   handleMessage(msg, sender);
 });
 
-async function handleMessage(msg, sender) {
-  // ── Popup messages (no tab) ──────────────────────────────────────────────
-  if (msg.type === "manual-run") {
-    // Reset claimHistory for all active faucets so they are treated as due
-    const { claimHistory = {} } = await chrome.storage.local.get("claimHistory");
-    const s = await getSettings();
-    for (const f of s.faucets) { if (f.active !== false) claimHistory[f.url] = 0; }
-    await chrome.storage.local.set({ claimHistory });
-    requestCheckAndRun(true);
-    return;
-  }
-
-  if (msg.type === "save-settings") {
-    const old = await getSettings();
-    await chrome.storage.local.set({ settings: { ...old, ...msg.settings } });
-    const s = await getSettings();
-    if (s.enabled) {
-      await chrome.storage.local.set({ running: true });
-      ensureTickAlarm();
-      requestCheckAndRun();
-    }
-    else { cancelAlarm(); await chrome.storage.local.set({ running: false }); }
-    console.log("[Faucet] Settings saved");
-    return;
-  }
-
-  if (msg.type === "reset-all-sites") {
-    // Reset to factory defaults with first site enabled, clear all runtime state
-    const faucets = makeFaucetDefaults();
-    faucets[0].active = true; // enable litepick as a starting point
-    const defaultSettings = { enabled: true, faucets };
-    await chrome.storage.local.set({ settings: defaultSettings, claimHistory: {}, claimQueue: [], activeTabs: {}, running: true });
-    ensureTickAlarm();
-    requestCheckAndRun(true);
-    console.log("[Faucet] All sites reset to enabled with cleared history");
-    return;
-  }
-
-  // ── Content-script messages (require a known tab) ────────────────────────
-  const tabId = sender.tab?.id;
-  if (!tabId) return;
-
-  const { activeTabs = {}, claimHistory = {} } = await chrome.storage.local.get(["activeTabs", "claimHistory"]);
-  const tabData = activeTabs[tabId];
-  if (!tabData) return; // not our tab
-
-  if (msg.type === "phase-heartbeat") {
-    activeTabs[tabId] = {
-      ...tabData,
-      phaseStartedAt: Date.now(),
-      lastHeartbeatAt: Date.now()
-    };
-    await chrome.storage.local.set({ activeTabs });
-    return;
-  }
-
-  const s   = await getSettings();
-  const cfg = s.faucets.find(f => sameHost(f.url, tabData.faucetUrl));
-
-  // ── faucet-done / faucet-error ────────────────────────────────────────────
-  if (msg.type === "faucet-done" || msg.type === "faucet-error") {
-    console.log("[Faucet]", tabData.faucetUrl, msg.type, msg.reason || "");
-    await appendLog({ url: tabData.faucetUrl, status: msg.type === "faucet-done" ? "ok" : "error", reason: msg.reason, balance: msg.balance, ts: Date.now() });
-
-    if (msg.type === "faucet-done" && msg.balance != null && cfg) {
-      // If dicebet was enabled, the balance already met wdThreshold in content.js
-      // So we should proceed with withdrawal regardless of wdThreshold
-      const isDicebetCompleted = cfg.dbEnabled === true;
-      
-      if (isDicebetCompleted) {
-        // Dicebet was enabled and succeeded, proceed to withdrawal
-        if (cfg.wdEnabled && cfg.wdAddress) {
-          activeTabs[tabId] = { ...tabData, phase: "withdraw", wdAddress: cfg.wdAddress, phaseStartedAt: Date.now() };
-          await chrome.storage.local.set({ activeTabs });
-          chrome.tabs.update(tabId, { url: getWithdrawUrl(cfg.url) });
-          return;
-        }
-      } else {
-        // Dicebet disabled, check regular withdrawal threshold
-        const threshold = parseFloat(cfg.wdThreshold);
-        if (!isNaN(threshold) && threshold > 0) {
-          if (cfg.wdEnabled && cfg.wdAddress && msg.balance >= threshold) {
-            // → withdraw
-            activeTabs[tabId] = { ...tabData, phase: "withdraw", wdAddress: cfg.wdAddress, phaseStartedAt: Date.now() };
-            await chrome.storage.local.set({ activeTabs });
-            chrome.tabs.update(tabId, { url: getWithdrawUrl(cfg.url) });
-            return;
-          }
-        }
-      }
-    }
-
-    if (cfg) claimHistory[cfg.url] = Date.now();
-    await chrome.storage.local.set({ claimHistory });
-    await closeTab(tabId);
-    
-    // Check for next due faucet in queue
-    console.log("[Faucet] Faucet claim complete, checking for next in queue");
-    await requestCheckAndRun();
-    return;
-  }
-
-  // ── withdraw-done / withdraw-error ────────────────────────────────────────
-  if (msg.type === "withdraw-done" || msg.type === "withdraw-error") {
-    console.log("[Faucet] Withdraw", msg.type);
-    await appendLog({ url: tabData.faucetUrl, status: msg.type === "withdraw-done" ? "wd-ok" : "wd-error", reason: msg.reason, ts: Date.now() });
-    if (cfg) claimHistory[cfg.url] = Date.now();
-    await chrome.storage.local.set({ claimHistory });
-    await closeTab(tabId);
-    
-    // Check for next due faucet in queue
-    console.log("[Faucet] Withdrawal complete, checking for next in queue");
-    await requestCheckAndRun();
-    return;
-  }
-}
 
 // ── Alarm handler ─────────────────────────────────────────────────────────────
 
@@ -527,8 +437,17 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 // ── Install / startup ─────────────────────────────────────────────────────────
 
 chrome.runtime.onInstalled.addListener(async () => {
-  const stored = await chrome.storage.local.get("settings");
-  if (!stored.settings) await chrome.storage.local.set({ settings: DEFAULT_SETTINGS });
+  const { settings, setupComplete } = await chrome.storage.local.get(["settings", "setupComplete"]);
+  
+  if (!settings) {
+    await chrome.storage.local.set({ settings: DEFAULT_SETTINGS });
+  }
+
+  // If setup not complete, open setup wizard
+  if (!setupComplete) {
+    chrome.tabs.create({ url: chrome.runtime.getURL("setup.html") });
+  }
+
   const s = await getSettings();
   // Clear any stale state from previous session
   await chrome.storage.local.set({ activeTabs: {}, running: s.enabled !== false });
@@ -541,12 +460,46 @@ chrome.runtime.onStartup.addListener(async () => {
   if (s.enabled) { ensureTickAlarm(); requestCheckAndRun(); }
 });
 
+// ── Telegram Webhook ─────────────────────────────────────────────────────────
+
+async function sendTelegramAlert(message) {
+  const { settings } = await chrome.storage.local.get("settings");
+  if (!settings?.telegram?.enabled || !settings?.telegram?.botToken || !settings?.telegram?.chatId) return;
+
+  const nodePrefix = settings.nodeName ? `[${settings.nodeName}] ` : "";
+  const finalMessage = `${nodePrefix}${message}`;
+
+  const url = `https://api.telegram.org/bot${settings.telegram.botToken}/sendMessage`;
+  try {
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: settings.telegram.chatId,
+        text: finalMessage,
+        parse_mode: "Markdown"
+      })
+    });
+  } catch (err) {
+    console.error("[Faucet] Telegram delivery failed", err);
+  }
+}
+
 // ── Activity log (last 30 entries) ───────────────────────────────────────────
 
 async function appendLog(entry) {
   const { activityLog = [] } = await chrome.storage.local.get("activityLog");
   activityLog.unshift(entry);
   await chrome.storage.local.set({ activityLog: activityLog.slice(0, 30) });
+
+  let host = "Unknown";
+  try { host = new URL(entry.url).hostname.replace('www.', ''); } catch (_) {}
+
+  if (entry.status === "wd-ok") {
+    sendTelegramAlert(`💸 *Withdrawal Successful!*\n\n*Site:* ${host}\n*Status:* Confirmed and processing.`);
+  } else if (entry.status === "error" || entry.status === "wd-error") {
+    sendTelegramAlert(`🚨 *Bot Error Detected*\n\n*Site:* ${host}\n*Action:* ${entry.status === "error" ? "Claim/Dice" : "Withdraw"}\n*Reason:* \`${entry.reason || "Unknown"}\``);
+  }
 }
 
 // ── Price fetcher (CoinGecko) ────────────────────────────────────────────────
@@ -600,51 +553,6 @@ async function handleMessage(msg, sender) {
     return;
   }
 
-  if (msg.type === "manual-run-dice") {
-    const s = await getSettings();
-    const cfg = s.faucets.find(f => f.url === msg.url);
-    if (!cfg) return;
-
-    const host = hostKey(cfg.url);
-    const diceHost = new URL(cfg.url).origin + "/dice.php";
-    const { activeTabs = {} } = await chrome.storage.local.get("activeTabs");
-
-    // Remove any previously stuck bot tabs for this host
-    for (const [id, data] of Object.entries(activeTabs)) {
-      if (hostKey(data.faucetUrl) === host) {
-        delete activeTabs[id];
-      }
-    }
-
-    // Try to reuse the current tab if it's open to the same host
-    const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    let targetTabId;
-    let needsNav = false;
-
-    if (currentTab && currentTab.url && hostKey(currentTab.url) === host) {
-      targetTabId = currentTab.id;
-      if (!currentTab.url.includes("dice.php") && !currentTab.url.match(/dice/i)) {
-        needsNav = true;
-      }
-    } else {
-      const newTab = await chrome.tabs.create({ url: diceHost, active: true });
-      targetTabId = newTab.id;
-      needsNav = false; // Brand new tab navigates automatically
-    }
-
-    activeTabs[targetTabId] = { faucetUrl: cfg.url, phase: "dicebet", phaseStartedAt: Date.now() };
-    await chrome.storage.local.set({ activeTabs });
-
-    if (needsNav) {
-      chrome.tabs.update(targetTabId, { url: diceHost });
-    } else if (currentTab && targetTabId === currentTab.id) {
-      // We are already on the dice page. Reloading forces the content script to run fresh
-      // as a plugin tab, immediately bootstrapping the bet bot process.
-      chrome.tabs.reload(targetTabId);
-    }
-    return;
-  }
-
   if (msg.type === "save-settings") {
     const old = await getSettings();
     await chrome.storage.local.set({ settings: { ...old, ...msg.settings } });
@@ -655,7 +563,7 @@ async function handleMessage(msg, sender) {
       requestCheckAndRun();
     }
     else { cancelAlarm(); await chrome.storage.local.set({ running: false }); }
-    console.log("[Faucet] Settings saved");
+    log("[Faucet] Settings saved");
     return;
   }
 
@@ -667,7 +575,7 @@ async function handleMessage(msg, sender) {
     await chrome.storage.local.set({ settings: defaultSettings, claimHistory: {}, claimQueue: [], activeTabs: {}, running: true });
     ensureTickAlarm();
     requestCheckAndRun(true);
-    console.log("[Faucet] All sites reset to enabled with cleared history");
+    log("[Faucet] All sites reset to enabled with cleared history");
     return;
   }
 
@@ -694,8 +602,14 @@ async function handleMessage(msg, sender) {
 
   // ── faucet-done / faucet-error ────────────────────────────────────────────
   if (msg.type === "faucet-done" || msg.type === "faucet-error") {
-    console.log("[Faucet]", tabData.faucetUrl, msg.type, msg.reason || "");
+    log("[Faucet]", tabData.faucetUrl, msg.type, msg.reason || "");
     await appendLog({ url: tabData.faucetUrl, status: msg.type === "faucet-done" ? "ok" : "error", reason: msg.reason, balance: msg.balance, ts: Date.now() });
+
+    if (msg.type === "faucet-done") {
+      const { claimCounts = {} } = await chrome.storage.local.get("claimCounts");
+      claimCounts[tabData.faucetUrl] = (claimCounts[tabData.faucetUrl] || 0) + 1;
+      await chrome.storage.local.set({ claimCounts });
+    }
 
     if (msg.type === "faucet-done" && msg.balance != null && cfg) {
       // If dicebet was enabled, the balance already met wdThreshold in content.js
@@ -707,7 +621,7 @@ async function handleMessage(msg, sender) {
         if (cfg.wdEnabled && cfg.wdAddress) {
           activeTabs[tabId] = { ...tabData, phase: "withdraw", wdAddress: cfg.wdAddress, phaseStartedAt: Date.now() };
           await chrome.storage.local.set({ activeTabs });
-          chrome.tabs.update(tabId, { url: getWithdrawUrl(cfg.url) });
+          chrome.tabs.update(tabId, { url: getWithdrawUrl(cfg) });
           return;
         }
       } else {
@@ -718,7 +632,7 @@ async function handleMessage(msg, sender) {
             // → withdraw
             activeTabs[tabId] = { ...tabData, phase: "withdraw", wdAddress: cfg.wdAddress, phaseStartedAt: Date.now() };
             await chrome.storage.local.set({ activeTabs });
-            chrome.tabs.update(tabId, { url: getWithdrawUrl(cfg.url) });
+            chrome.tabs.update(tabId, { url: getWithdrawUrl(cfg) });
             return;
           }
         }
