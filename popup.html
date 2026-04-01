@@ -3,20 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Astra Yield Protocol</title>
+  <title>Faucet Pro v2.6</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
 
 <div class="update-banner" id="updateBanner">
-  🚀 Protocol Update Available — Synchronize Now
+  🚀 New version available — Update Now
 </div>
 
 <header>
-  <h1>Astra Yield Protocol</h1>
+  <h1>Faucet Pro v2.6</h1>
   <div class="header-status">
     <div class="pulse-dot"></div>
-    <span id="headerStatusText">Syncing…</span>
+    <span id="headerStatusText">Status: Standby</span>
   </div>
 </header>
 
@@ -24,52 +24,49 @@
   <!-- ── DASHBOARD (HOME) ── -->
   <section class="panel active" id="tab-home">
     <div class="hero-section">
-      <h2 class="welcome-msg" id="nodeName">Astra Node-01</h2>
+      <h2 class="welcome-msg" id="nodeName">Welcome Back!</h2>
       <p class="protocol-status" id="protocolStatus">
-        <span id="statusLabel">Initializing…</span>
+        <span id="statusLabel">Automation is ready to start.</span>
       </p>
     </div>
 
-    <!-- Analytics Chart -->
-    <div class="stats-module">
-      <div class="stats-header">
-        <span class="stats-title">Global Analytics (24h)</span>
-        <div id="nodeBadgeText" style="font-size:9px; font-weight:700; color:var(--accent); border:1px solid var(--accent); padding:1px 5px; border-radius:4px;">ALPHA-01</div>
-      </div>
-      <div class="stats-body">
-        <div class="sparkline-container">
-          <canvas id="sparkline" class="sparkline-canvas"></canvas>
+    <!-- Simple Stats Card -->
+    <div class="stats-module" style="background:var(--panel); border:1px solid var(--glass-border); padding:20px; border-radius:24px; margin-bottom:24px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <div style="font-size:10px; color:var(--text-dim); text-transform:uppercase; font-weight:700; margin-bottom:4px;">Total Earned Today</div>
+          <div class="stats-val" id="totalValue" style="font-size:24px; color:#fff;">LIVE</div>
         </div>
-        <div class="stats-data">
-          <div class="stats-val" id="totalValue">$0.00</div>
-          <div class="stats-lbl">Total Yield</div>
+        <div style="text-align:right;">
+          <div style="font-size:10px; color:var(--text-dim); text-transform:uppercase; font-weight:700; margin-bottom:4px;">Global Claims</div>
+          <div class="stats-val" id="globalClaims" style="font-size:24px; color:var(--accent);">Active</div>
         </div>
       </div>
     </div>
 
     <div class="site-grid" id="dashboardGrid">
-      <!-- Site circular cards injected here -->
+      <!-- Site cards injected here -->
     </div>
 
     <div class="action-bar">
-      <button class="btn-alpha" id="runBtn">▶ Initiate Alpha Cycle</button>
-      <button class="btn-alpha" id="stopBtn" style="display:none; background:rgba(255,75,75,0.1); color:#ff4b4b; border:1px solid rgba(255,75,75,0.2); box-shadow:none;">■ Terminate Session</button>
+      <button class="btn-alpha" id="runBtn">▶ Start Automation</button>
+      <button class="btn-alpha" id="stopBtn" style="display:none; background:rgba(255,75,75,0.1); color:#ff4b4b; border:1px solid rgba(255,75,75,0.2); box-shadow:none;">■ Stop All</button>
     </div>
   </section>
 
   <!-- ── SITES PANEL ── -->
   <section class="panel" id="tab-sites">
-    <div class="group-header"><span>🌐</span> Protocol Library</div>
+    <div class="group-header"><span>🌐</span> Managed Faucets</div>
     <div id="sitesListContainer" style="display:flex; flex-direction:column; gap:10px;">
-      <!-- Protocol cards (Features Mockup style) injected here -->
+      <!-- Site cards injected here -->
     </div>
   </section>
 
   <!-- ── HISTORY PANEL ── -->
   <section class="panel" id="tab-history">
-    <div class="group-header"><span>📜</span> Execution Log</div>
+    <div class="group-header"><span>📜</span> Activity History</div>
     <div id="historyList" style="display:flex; flex-direction:column; gap:8px;">
-      <div style="text-align:center; color:var(--text-dim); font-size:11px; margin-top:40px;">No protocol events recorded</div>
+      <div style="text-align:center; color:var(--text-dim); font-size:11px; margin-top:40px;">No recent activity</div>
     </div>
   </section>
 
@@ -77,37 +74,37 @@
   <section class="panel" id="tab-settings">
     <div class="config-section">
       <div class="config-group">
-        <div class="group-header"><span>⚙️</span> Cluster Config</div>
+        <div class="group-header"><span>⚙️</span> General Settings</div>
         <div class="input-card">
           <div class="toggle-switch">
-            <span class="label">Yield Scheduler</span>
+            <span class="label">Auto-Run Enabled</span>
             <input type="checkbox" id="cfgEnabled">
           </div>
           <div class="field">
-            <label class="label">Node Identity</label>
-            <input type="text" id="cfgNodeName" placeholder="e.g. ALPHA-01">
+            <label class="label">Custom Name (Optional)</label>
+            <input type="text" id="cfgNodeName" placeholder="e.g. My Faucet Bot">
           </div>
         </div>
       </div>
 
       <div class="config-group">
-        <div class="group-header"><span>🛡️</span> Alpha Heuristics</div>
+        <div class="group-header"><span>🛡️</span> Smart Delay (Anti-Detection)</div>
         <div class="input-card">
           <div class="toggle-switch">
             <span class="label">Enable Long Breaks</span>
             <input type="checkbox" id="longBreakEnabled">
           </div>
           <div class="field">
-            <label class="label">Cycle Frequency (Claims)</label>
+            <label class="label">Take Break After (Claims)</label>
             <input type="number" id="longBreakFrequency" value="5">
           </div>
           <div style="display:flex; gap:10px;">
             <div class="field" style="flex:1">
-              <label class="label">Min (min)</label>
+              <label class="label">Min Wait (min)</label>
               <input type="number" id="longBreakMin" value="65">
             </div>
             <div class="field" style="flex:1">
-              <label class="label">Max (min)</label>
+              <label class="label">Max Wait (min)</label>
               <input type="number" id="longBreakMax" value="80">
             </div>
           </div>
@@ -115,10 +112,10 @@
       </div>
 
       <div class="config-group">
-        <div class="group-header"><span>📱</span> Telegram Yield Alerts</div>
+        <div class="group-header"><span>📱</span> Telegram Notifications</div>
         <div class="input-card">
           <div class="toggle-switch">
-            <span class="label">Notifications</span>
+            <span class="label">Send Alerts</span>
             <input type="checkbox" id="tgEnabled">
           </div>
           <div class="field">
@@ -133,17 +130,17 @@
       </div>
 
       <div class="config-group" id="siteConfigSection" style="display:none;">
-        <div class="group-header"><span>💎</span> <span id="selectedSiteLabel">Site Settings</span></div>
+        <div class="group-header"><span>💎</span> <span id="selectedSiteLabel">Site Details</span></div>
         <div class="input-card" id="siteConfigCard">
           <!-- Dynamic per-site config injected here -->
         </div>
       </div>
 
-      <button class="btn-alpha" id="saveBtn" style="margin-top:10px;">💾 Deploy Protocol</button>
+      <button class="btn-alpha" id="saveBtn" style="margin-top:10px;">💾 Save Changes</button>
       
       <div style="display:flex; gap:10px; margin-top:20px; opacity:0.6;">
-        <button id="resetBtn" style="flex:1; background:none; border:1px solid var(--status-err); color:var(--status-err); border-radius:10px; padding:8px; font-size:10px; cursor:pointer;">Factory Reset</button>
-        <button id="exportBtn" style="flex:1; background:none; border:1px solid var(--text-dim); color:var(--text-dim); border-radius:10px; padding:8px; font-size:10px; cursor:pointer;">Export JSON</button>
+        <button id="resetBtn" style="flex:1; background:none; border:1px solid var(--status-err); color:var(--status-err); border-radius:10px; padding:8px; font-size:10px; cursor:pointer;">Reset Bot</button>
+        <button id="exportBtn" style="flex:1; background:none; border:1px solid var(--text-dim); color:var(--text-dim); border-radius:10px; padding:8px; font-size:10px; cursor:pointer;">Export Config</button>
       </div>
     </div>
   </section>
@@ -156,19 +153,19 @@
   </div>
   <div class="nav-item" data-tab="sites">
     <span class="icon">🌐</span>
-    <span class="nav-label">Sites</span>
+    <span class="nav-label">Faucets</span>
   </div>
   <div class="nav-item" data-tab="history">
     <span class="icon">📜</span>
-    <span class="nav-label">History</span>
+    <span class="nav-label">Activity</span>
   </div>
   <div class="nav-item" data-tab="settings">
     <span class="icon">⚙️</span>
-    <span class="nav-label">Gear</span>
+    <span class="nav-label">Settings</span>
   </div>
 </nav>
 
-<div class="save-indicator" id="saveMsg">Protocol Deployed</div>
+<div class="save-indicator" id="saveMsg">Settings Saved Successfully</div>
 
 <script src="constants.js"></script>
 <script src="crypto-utils.js"></script>

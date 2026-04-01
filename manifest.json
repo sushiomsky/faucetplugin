@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Faucet Pro: Multi-Chain Yield Optimizer",
-  "version": "2.5.0",
-  "description": "The premier multi-chain yield optimization protocol for professional-grade automated faucet claiming. Featuring the elite Astra Design and Alpha Heuristics.",
+  "name": "Faucet Pro: Intuitive Automation Tool",
+  "version": "2.6.0",
+  "description": "The most intuitive multi-chain automation tool for claiming faucets. Clean, professional, and incredibly easy to use.",
   "permissions": [
     "tabs",
     "alarms",

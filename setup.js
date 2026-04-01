@@ -23,15 +23,6 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function prevStep() {
-    if (currentStep > 1) {
-      document.getElementById(`step${currentStep}`).classList.remove('active');
-      currentStep--;
-      document.getElementById(`step${currentStep}`).classList.add('active');
-      updateProgress();
-    }
-  }
-
   function renderSiteGrid() {
     const grid = document.getElementById('siteGrid');
     if (!grid) return;
@@ -72,21 +63,21 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!list) return;
     list.innerHTML = '';
     faucets.filter(f => f.active).forEach((f, i) => {
-      const field = document.createElement('div');
-      field.style = "margin-bottom:15px;";
-      field.innerHTML = `
-        <div style="font-size:10px; font-weight:700; color:var(--text-dim); text-transform:uppercase; margin-bottom:6px; text-align:left; padding-left:10px;">${f.label} Deployment Address</div>
-        <input type="text" class="input-field" style="margin-bottom:0;" placeholder="Enter address..." value="${f.wdAddress || ''}" id="addr-${f.label}">
+      const item = document.createElement('div');
+      item.style = "margin-bottom:15px;";
+      item.innerHTML = `
+        <div style="font-size:10px; font-weight:700; color:var(--text-dim); text-transform:uppercase; margin-bottom:5px; text-align:left; padding-left:10px;">${f.label} Wallet Address</div>
+        <input type="text" class="input-field" placeholder="Enter your ${f.label} address..." value="${f.wdAddress || ''}" id="addr-${f.label}">
       `;
-      const input = field.querySelector('input');
+      const input = item.querySelector('input');
       input.addEventListener('input', () => {
         f.wdAddress = input.value.trim();
       });
-      list.appendChild(field);
+      list.appendChild(item);
     });
     
     if (list.innerHTML === '') {
-      list.innerHTML = '<p style="text-align:center; color:var(--text-dim); padding: 40px;">No networks activated.</p>';
+      list.innerHTML = '<p style="text-align:center; color:var(--text-dim); padding: 40px;">No faucets selected.</p>';
     }
   }
 
@@ -95,7 +86,7 @@ window.addEventListener('DOMContentLoaded', () => {
       const settings = {
         enabled: true,
         faucets: faucets,
-        nodeName: "Astra-Node"
+        nodeName: "Faucet Bot"
       };
       
       await chrome.storage.local.set({ 
@@ -107,7 +98,7 @@ window.addEventListener('DOMContentLoaded', () => {
       chrome.runtime.sendMessage({ type: "save-settings", settings });
       window.close();
     } catch (err) {
-      console.error("Critical: Onboarding failed", err);
+      console.error("Setup failed:", err);
     }
   }
 
@@ -123,10 +114,6 @@ window.addEventListener('DOMContentLoaded', () => {
 
   document.querySelectorAll('.step-next-btn').forEach(btn => {
     btn.addEventListener('click', nextStep);
-  });
-
-  document.querySelectorAll('.step-back-btn').forEach(btn => {
-    btn.addEventListener('click', prevStep);
   });
 
   updateProgress();
