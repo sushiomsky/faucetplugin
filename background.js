@@ -14,7 +14,7 @@ const DEFAULT_SETTINGS = {
   longBreakFrequency: DEFAULT_LONG_BREAK_FREQUENCY,
   longBreakMin: DEFAULT_LONG_BREAK_MIN,
   longBreakMax: DEFAULT_LONG_BREAK_MAX,
-  nodeName: DEFAULT_NODE_NAME
+  botName: DEFAULT_BOT_NAME
 };
 
 async function getSettings() {
@@ -280,8 +280,20 @@ async function checkAndRun(forceAll = false) {
     console.log(`[Faucet] No active tabs. Starting next from queue: ${nextUrl}`);
     
     try {
-      const tab = await chrome.tabs.create({ url: nextUrl, active: false });
-      console.log(`[Faucet] ✓ Opened tab ${tab.id} for ${nextUrl}`);
+      let finalUrl = nextUrl;
+      const s = await getSettings();
+      const faucetCfg = s.faucets.find(f => sameHost(f.url, nextUrl));
+      
+      // If we have a referral ID and no credentials stored, use the referral link
+      if (faucetCfg && faucetCfg.referralId && (!faucetCfg.username || !faucetCfg.password)) {
+        const urlObj = new URL(nextUrl);
+        urlObj.searchParams.set("ref", faucetCfg.referralId);
+        finalUrl = urlObj.toString();
+        console.log(`[Faucet] Opening with referral link: ${finalUrl}`);
+      }
+
+      const tab = await chrome.tabs.create({ url: finalUrl, active: false });
+      console.log(`[Faucet] ✓ Opened tab ${tab.id} for ${finalUrl}`);
       activeTabs[tab.id] = { faucetUrl: nextUrl, phase: "faucet", startedAt: Date.now(), phaseStartedAt: Date.now() };
       await chrome.storage.local.set({ activeTabs, claimQueue, running: true, lastRunStart: Date.now() });
       log(`[Faucet] ✓ Stored tab ${tab.id} in activeTabs`);
@@ -466,8 +478,8 @@ async function sendTelegramAlert(message) {
   const { settings } = await chrome.storage.local.get("settings");
   if (!settings?.telegram?.enabled || !settings?.telegram?.botToken || !settings?.telegram?.chatId) return;
 
-  const nodePrefix = settings.nodeName ? `[${settings.nodeName}] ` : "";
-  const finalMessage = `${nodePrefix}${message}`;
+  const botPrefix = settings.botName ? `[${settings.botName}] ` : "";
+  const finalMessage = `${botPrefix}${message}`;
 
   const url = `https://api.telegram.org/bot${settings.telegram.botToken}/sendMessage`;
   try {

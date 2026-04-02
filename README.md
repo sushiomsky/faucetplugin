@@ -1,57 +1,55 @@
-# 🚀 Astra Yield Protocol v2.3
-### The Premier Multi-Chain Yield Optimization Protocol
+# 🚰 Faucet Pro v2.6
+### The Most Intuitive Automation Tool for Faucet Claiming
 
-![Astra Yield Dashboard](branding/dashboard_mockup_1774935093081.png)
+![Faucet Pro Dashboard](cws_submission_assets/screenshot_dashboard.png)
 
-**Astra Yield Protocol** (formerly Faucet Pro) is a professional-grade browser extension designed for high-efficiency, multi-account yield automation. Built for the modern crypto ecosystem, it provides a seamless, "set-and-forget" experience for maximizing automated claims across multiple networks.
-
----
-
-## 💎 Elite Performance Features
-
-### 🛡️ Alpha Heuristics & Anti-Detection
-Maximize your account longevity with our proprietary **Alpha Heuristics** engine. 
-- **Smart Timing Logic**: Mimics human behavior with randomized claim intervals.
-- **Extended "Long Breaks"**: Configurable 65-80 minute rest periods to avoid pattern detection.
-- **Native Click Emulation**: Uses the Chrome DevTools Protocol for trusted, hardware-level interaction.
-
-### 🌐 Multi-Chain Support
-One protocol to rule them all. Unified support for the most profitable networks:
-- **LTC** (Litepick) | **DOGE** (Dogepick) | **SOL** (Solpick) | **BNB** (Bnbpick) | **TRON** (Tronpick) | **POL/MATIC** (Polpick)
-
-### 🛰️ Cluster-Aware Management
-Designed for professional "Node" operators.
-- **Node Identity Branding**: Unique ID tagging for every instance in your cluster.
-- **Real-Time Telegram Alerts**: Instant reporting of successful yields, withdrawals, and system status directly to your Telegram bot.
+**Faucet Pro** is a clean, professional, and incredibly easy-to-use browser extension designed to automate your favorite faucets. Stop wasting time on manual clicks and let Faucet Pro handle your claims with smart, human-like automation.
 
 ---
 
-## 🛠️ Unified Command Center
+## ✨ Key Features
 
-![Features Overview](branding/features_mockup_1774935137481.png)
+### 🤖 Smart Automation
+*   **Set & Forget**: Once configured, the bot monitors and claims from your selected sites automatically.
+*   **Human-Like Behavior**: Built-in randomized delays and "Long Breaks" (65-80 minutes) to keep your accounts safe and natural.
+*   **Native Interaction**: Uses advanced browser technology to interact with sites just like a real user.
 
-### Core Capabilities:
-- **Intelligent Auto-Withdrawal**: Automatically move profits to your cold wallet once custom USD thresholds are met.
-- **Automated CAPTCHA Solving**: Integrated support for modern anti-bot challenges (Turnstile, hCaptcha).
-- **Yield Forecasting**: Real-time CoinGecko API integration for live USD balance tracking.
-- **BETA: High-Roller Dice Strategy**: Automated risk-management for internal site games to multiply your yields.
+### 🌐 Supported Platforms
+Automate claims across the most popular faucet networks:
+*   **Litepick** (LTC)
+*   **Dogepick** (DOGE)
+*   **Solpick** (SOL)
+*   **Bnbpick** (BNB)
+*   **Tronpick** (TRX)
+*   **Polpick** (POL/MATIC)
+
+### 💰 Professional Tools
+*   **Auto-Withdrawal**: Automatically send your earnings to your wallet once they reach your custom threshold.
+*   **Telegram Alerts**: Get instant notifications on your phone whenever a claim is successful or a withdrawal is processed.
+*   **Live Balance Tracking**: See your total earnings in USD with real-time price updates.
+*   **Smart Layout**: A beautiful, easy-to-navigate dashboard that shows exactly when your next claim is due.
 
 ---
 
-## 🚀 Rapid Deployment
+## 🚀 Getting Started in 1 Minute
 
-![Setup Wizard](branding/wizard_mockup_1774935115228.png)
+![Setup Wizard](cws_submission_assets/screenshot_wizard.png)
 
-1.  **Clone / Download** this repository.
-2.  Open `chrome://extensions` in your browser.
-3.  Enable **Developer mode** and click **Load unpacked**.
-4.  Launch the **Astra Yield Wizard** to configure your protocol in 3 easy steps.
+1.  **Install** the extension.
+2.  **Launch the Setup Wizard** which will guide you through picking your sites and entering your wallet addresses.
+3.  **Click "Start Automation"** and watch your balances grow!
+
+---
+
+## 🛡️ Safety & Privacy
+*   **Localized Data**: All your settings and wallet addresses are stored locally on your machine. We never see your data.
+*   **Encrypted Storage**: Sensitive information is encrypted for your protection.
 
 ---
 
 ## ⚖️ Disclaimer
-*Astra Yield Protocol is designed for educational and research purposes. Use of automated tools may violate the terms of service of certain platforms. The developers are not responsible for any account suspensions or losses.*
+*Faucet Pro is intended for personal automation and research purposes. Please ensure you comply with the terms of service of the sites you use. The developers are not responsible for account-related issues.*
 
 ---
 
-**© 2026 Astra Yield Labs. Professional Yield Optimization.**
+**© 2026 Faucet Pro Labs. The Gold Standard in Faucet Automation.**

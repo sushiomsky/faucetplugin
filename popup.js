@@ -34,6 +34,7 @@ const totalValueEl = document.getElementById("totalValue");
 const globalClaimsEl = document.getElementById("globalClaims");
 const protocolStatusEl = document.getElementById("protocolStatus");
 const headerStatusText = document.getElementById("headerStatusText");
+const botNameEl = document.getElementById("botName");
 const runBtn = document.getElementById("runBtn");
 const stopBtn = document.getElementById("stopBtn");
 const saveBtn = document.getElementById("saveBtn");
@@ -177,7 +178,8 @@ async function loadSettings() {
   minWdThresholds = stored.minWdThresholds || {};
   
   document.getElementById("cfgEnabled").checked = s.enabled !== false;
-  document.getElementById("cfgNodeName").value = s.nodeName === "Astra-Node" ? "" : (s.nodeName || "");
+  document.getElementById("cfgBotName").value = s.botName === "Faucet Bot" ? "" : (s.botName || "");
+  if (botNameEl) botNameEl.textContent = s.botName || "Welcome Back!";
   document.getElementById("longBreakEnabled").checked = s.longBreakEnabled === true;
   document.getElementById("longBreakFrequency").value = s.longBreakFrequency || 5;
   document.getElementById("longBreakMin").value = s.longBreakMin || 65;
@@ -276,7 +278,7 @@ saveBtn.onclick = async () => {
 
   const settings = {
     enabled: document.getElementById("cfgEnabled").checked,
-    nodeName: document.getElementById("cfgNodeName").value.trim() || "Faucet Bot",
+    botName: document.getElementById("cfgBotName").value.trim() || "Faucet Bot",
     longBreakEnabled: document.getElementById("longBreakEnabled").checked,
     longBreakFrequency: parseInt(document.getElementById("longBreakFrequency").value) || 5,
     longBreakMin: parseInt(document.getElementById("longBreakMin").value) || 65,
@@ -298,6 +300,11 @@ runBtn.onclick = () => chrome.runtime.sendMessage({ type: "manual-run" });
 stopBtn.onclick = () => chrome.runtime.sendMessage({ type: "save-settings", settings: { enabled: false } });
 
 (async () => {
+  const { setupComplete } = await chrome.storage.local.get("setupComplete");
+  if (!setupComplete) {
+    window.location.href = "setup.html";
+    return;
+  }
   await loadSettings();
   await refreshStatus();
   setInterval(refreshStatus, 1000);

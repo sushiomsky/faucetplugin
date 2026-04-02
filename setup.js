@@ -86,7 +86,7 @@ window.addEventListener('DOMContentLoaded', () => {
       const settings = {
         enabled: true,
         faucets: faucets,
-        nodeName: "Faucet Bot"
+        botName: "Faucet Bot"
       };
       
       await chrome.storage.local.set({ 

@@ -136,16 +136,38 @@ main { flex: 1; position: relative; overflow: hidden; }
 
 /* ── Action Buttons ── */
 .action-bar { margin-top: auto; }
-.btn-alpha {
-  width: 100%; padding: 16px; border-radius: 16px;
-  background: linear-gradient(90deg, #f0b90b, #ffe580);
-  color: #000; font-family: inherit; font-size: 14px; font-weight: 800;
-  text-transform: uppercase; letter-spacing: 1px; border: none;
-  cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px;
-  box-shadow: 0 4px 15px var(--accent-glow);
+.btn-pro {
+  width: 100%;
+  background: linear-gradient(90deg, var(--accent), #ffe580);
+  color: #000;
+  border: none;
+  border-radius: 14px;
+  padding: 14px;
+  font-family: inherit;
+  font-weight: 800;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 10px 20px var(--accent-glow);
+  transition: 0.3s;
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
-.btn-alpha:hover { transform: translateY(-2px); filter: brightness(1.1); }
-.btn-alpha:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.btn-pro:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.1);
+}
+.btn-pro:active { transform: translateY(0); }
+.btn-pro:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  filter: grayscale(1);
+  box-shadow: none;
+}
 
 /* ── Bottom Nav ── */
 nav.bottom-nav {

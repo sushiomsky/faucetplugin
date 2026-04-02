@@ -16,7 +16,7 @@
   <h1>Faucet Pro v2.6</h1>
   <div class="header-status">
     <div class="pulse-dot"></div>
-    <span id="headerStatusText">Status: Standby</span>
+    <span id="headerStatusText">Status: Ready</span>
   </div>
 </header>
 
@@ -24,7 +24,7 @@
   <!-- ── DASHBOARD (HOME) ── -->
   <section class="panel active" id="tab-home">
     <div class="hero-section">
-      <h2 class="welcome-msg" id="nodeName">Welcome Back!</h2>
+      <h2 class="welcome-msg" id="botName">Welcome Back!</h2>
       <p class="protocol-status" id="protocolStatus">
         <span id="statusLabel">Automation is ready to start.</span>
       </p>
@@ -49,8 +49,8 @@
     </div>
 
     <div class="action-bar">
-      <button class="btn-alpha" id="runBtn">▶ Start Automation</button>
-      <button class="btn-alpha" id="stopBtn" style="display:none; background:rgba(255,75,75,0.1); color:#ff4b4b; border:1px solid rgba(255,75,75,0.2); box-shadow:none;">■ Stop All</button>
+      <button class="btn-pro" id="runBtn">▶ Start Automation</button>
+      <button class="btn-pro" id="stopBtn" style="display:none; background:rgba(255,75,75,0.1); color:#ff4b4b; border:1px solid rgba(255,75,75,0.2); box-shadow:none;">■ Stop All</button>
     </div>
   </section>
 
@@ -81,8 +81,8 @@
             <input type="checkbox" id="cfgEnabled">
           </div>
           <div class="field">
-            <label class="label">Custom Name (Optional)</label>
-            <input type="text" id="cfgNodeName" placeholder="e.g. My Faucet Bot">
+            <label class="label">Custom Bot Name (Optional)</label>
+            <input type="text" id="cfgBotName" placeholder="e.g. My Faucet Bot">
           </div>
         </div>
       </div>
@@ -136,7 +136,7 @@
         </div>
       </div>
 
-      <button class="btn-alpha" id="saveBtn" style="margin-top:10px;">💾 Save Changes</button>
+      <button class="btn-pro" id="saveBtn" style="margin-top:10px;">💾 Save Changes</button>
       
       <div style="display:flex; gap:10px; margin-top:20px; opacity:0.6;">
         <button id="resetBtn" style="flex:1; background:none; border:1px solid var(--status-err); color:var(--status-err); border-radius:10px; padding:8px; font-size:10px; cursor:pointer;">Reset Bot</button>
