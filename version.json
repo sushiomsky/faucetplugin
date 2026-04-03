@@ -1,5 +1,5 @@
 {
-  "version": "2.6.0",
-  "download_url": "https://github.com/sushiomsky/faucetplugin/raw/main/faucet-pro-v2.6.zip",
-  "changelog": "v2.6.0 — Intuitive Simplification. Removed technical jargon, simplified the dashboard, and streamlined the onboarding process for better ease-of-use."
+  "version": "2.7.0",
+  "download_url": "https://github.com/sushiomsky/faucetplugin/raw/main/faucet-pro-v2.7.zip",
+  "changelog": "v2.7.0 — Premium Onboarding & Rebranding. Finalized the FaucetPick rebranding, implemented a mandatory onboarding setup wizard, and optimized the dashboard for a premium user experience."
 }

@@ -1,4 +1,4 @@
-# 🚰 FaucetPick v2.6.0
+# 🚰 FaucetPick v2.7.0
 ### The Gold Standard in Faucet Automation
 
 **FaucetPick** is a premium Chrome browser extension (Manifest V3) that automates "pick-style" cryptocurrency faucets (like Litepick, Dogepick, etc.). It operates as a fully local, "set-and-forget" automation engine with an advanced anti-detection layer, automatic withdrawals, and real-time Telegram alerts.
