@@ -76,29 +76,76 @@ function clickElementRobust(el, label) {
 function tryClickCaptchaWidget() {
   const turnstileFrames = SiteSelectors.getAllValid("captchaFrames");
   for (const frame of turnstileFrames) {
+    if (!isVisibleForClick(frame)) continue;
+    // Don't click if it looks like it's solved (response input has value)
+    const resp = SiteSelectors.getFirstValid("captchaTokenCloudflare");
+    if (resp && resp.value && resp.value.length > 30) continue;
     if (clickElementRobust(frame, "Turnstile iframe")) return true;
   }
 
   const turnstileCheckboxes = SiteSelectors.getAllValid("captchaCheckboxes");
   for (const checkbox of turnstileCheckboxes) {
-    if (checkbox.checked) continue;
+    if (checkbox.checked || !isVisibleForClick(checkbox)) continue;
     if (clickElementRobust(checkbox, "Turnstile checkbox")) return true;
   }
 
   let widget = SiteSelectors.getFirstValid("captchaTurnstileWidget");
-  if (widget && clickElementRobust(widget, "Turnstile container")) return true;
+  if (widget && isVisibleForClick(widget) && clickElementRobust(widget, "Turnstile container")) return true;
 
   widget = SiteSelectors.getFirstValid("captchaHCaptchaWidget");
-  if (widget && clickElementRobust(widget, "hCaptcha widget")) return true;
+  if (widget && isVisibleForClick(widget) && clickElementRobust(widget, "hCaptcha widget")) return true;
 
   widget = SiteSelectors.getFirstValid("captchaGenericWidget");
-  if (widget && clickElementRobust(widget, "generic captcha container")) return true;
+  if (widget && isVisibleForClick(widget) && clickElementRobust(widget, "generic captcha container")) return true;
 
   widget = SiteSelectors.getFirstValid("captchaIconWidget");
-  if (widget && clickElementRobust(widget, "IconCaptcha widget")) return true;
+  if (widget && isVisibleForClick(widget) && clickElementRobust(widget, "IconCaptcha widget")) return true;
+
+  widget = SiteSelectors.getFirstValid("captchaPCaptchaWidget");
+  if (widget && isVisibleForClick(widget) && clickElementRobust(widget, "pCaptcha widget")) return true;
 
   log("No captcha widget found to click");
   return false;
+}
+
+async function rotateCaptchaType() {
+  const select = SiteSelectors.getFirstValid("captchaSelect");
+  if (!select) {
+    log("Captcha rotation: No selection dropdown found");
+    return false;
+  }
+
+  const options = Array.from(select.options).filter(o => !o.disabled && o.value);
+  if (options.length <= 1) {
+    log("Captcha rotation: Only one method available, cannot rotate");
+    return false;
+  }
+
+  const currentIndex = select.selectedIndex;
+  const nextPos = (currentIndex >= 0 && currentIndex < select.options.length - 1) ? currentIndex + 1 : 0;
+  const nextOption = select.options[nextPos];
+
+  if (nextOption.disabled || !nextOption.value) {
+    // Try the first valid one
+    for (let i = 0; i < select.options.length; i++) {
+        if (!select.options[i].disabled && select.options[i].value) {
+            select.selectedIndex = i;
+            break;
+        }
+    }
+  } else {
+    select.selectedIndex = nextPos;
+  }
+
+  const newLabel = select.options[select.selectedIndex].text;
+  log(`Captcha rotation: Switched to ${newLabel} (value: ${select.value})`);
+  
+  // Trigger change event
+  select.dispatchEvent(new Event('change', { bubbles: true }));
+  
+  // Wait a bit for the page to update the UI
+  await sleep(2000);
+  return true;
 }
 
 function hasCaptchaWidget() {

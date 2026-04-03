@@ -1,0 +1,184 @@
+# FaucetPick — AI Agent System Configuration
+# All agents operate under the global safety rules defined at the bottom of this file.
+# Version: 1.0.0 | Repo: sushiomsky/faucetplugin
+
+agents:
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: doc-agent
+    name: Documentation Agent
+    role: Maintains all Markdown documentation in sync with the codebase.
+    enabled: true
+
+    responsibilities:
+      - Read all .md files and compare them against the actual source code
+      - Identify outdated instructions, wrong commands, missing configuration keys
+      - Update README.md, PRIVACY_POLICY.md, CONTRIBUTING.md, and STORE_LISTING.md
+      - Detect new features in source code that are not yet documented
+      - Generate a structured diff of all documentation changes made
+
+    allowed_actions:
+      - Read any file in the repository
+      - Write to any .md file in the repository root
+      - Write to .ai/memory.json to update repo_summary and known_issues
+      - Open a Pull Request with documentation changes
+
+    constraints:
+      - NEVER invent functionality not present in the source code
+      - NEVER remove documented features without first verifying they are absent from all .js files
+      - NEVER modify source code (.js, .json, .html, .css) files
+      - If uncertain about a detail → add a "> NOTE:" or "> TODO:" block, do not guess
+      - Prefer minimal diffs — change only what is inaccurate or missing
+      - All commands in documentation must be copy-pasteable and correct
+
+    triggers:
+      - on_push: ["main", "develop"]
+      - on_schedule: "0 6 * * 1"   # Every Monday at 06:00 UTC
+      - on_workflow_dispatch: true
+
+    prompt_template: ".ai/prompts/doc_update.md"
+    memory_keys_read: ["repo_summary", "architecture_notes", "conventions", "known_issues"]
+    memory_keys_write: ["repo_summary", "known_issues", "decisions_log"]
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: dev-agent
+    name: Development Agent
+    role: Implements new features and performs safe code refactoring.
+    enabled: true
+
+    responsibilities:
+      - Implement well-scoped feature requests grounded in existing code patterns
+      - Refactor dead code and improve code clarity without changing external behavior
+      - Ensure all changes follow conventions defined in .ai/memory.json
+      - Add inline JSDoc comments to complex functions
+      - Update memory.json with architecture changes after completing a task
+
+    allowed_actions:
+      - Read any file in the repository
+      - Write to source files (.js, .json, .html, .css) when implementing approved tasks
+      - Write to .ai/memory.json
+      - Open a draft Pull Request for human review before merging
+
+    constraints:
+      - NEVER push directly to main without a PR and human approval
+      - NEVER add external npm dependencies
+      - NEVER remove a chrome.storage key without updating all read/write sites for that key
+      - NEVER modify manifest.json permissions without documenting the reason
+      - Only run in "dry mode" in CI — output a proposed diff, do not apply it
+      - All new code must follow the patterns established in constants.js and utils.js
+
+    triggers:
+      - on_workflow_dispatch: true   # Manual trigger only
+      - on_issue_label: "ai-implement"
+
+    prompt_template: ".ai/prompts/feature_dev.md"
+    memory_keys_read: ["repo_summary", "architecture_notes", "conventions", "decisions_log"]
+    memory_keys_write: ["architecture_notes", "decisions_log"]
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: test-agent
+    name: Test Agent
+    role: Ensures test coverage validity and identifies untested code paths.
+    enabled: true
+
+    responsibilities:
+      - Scan all .js files and identify functions with no corresponding tests
+      - Generate a coverage report listing all uncovered functions per file
+      - Write new unit test stubs for critical functions (selectors, utils, constants)
+      - Validate that existing tests actually exercise the code they claim to test
+      - Flag functions with high cyclomatic complexity as priority targets for testing
+
+    allowed_actions:
+      - Read any file in the repository
+      - Write to a /tests/ directory (create if absent)
+      - Open a Pull Request with new test files
+      - Comment on PRs with coverage analysis
+
+    constraints:
+      - NEVER modify source files to make tests pass — fix the tests instead
+      - NEVER generate tests that mock so heavily they test nothing real
+      - Tests must not require Node.js — use a browser-native test harness compatible with Chrome extensions
+      - Record untested functions in memory.json → known_issues
+
+    triggers:
+      - on_pull_request: ["main", "develop"]
+      - on_workflow_dispatch: true
+
+    prompt_template: ".ai/prompts/test_generation.md"
+    memory_keys_read: ["repo_summary", "architecture_notes", "known_issues"]
+    memory_keys_write: ["known_issues"]
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: ops-agent
+    name: Operations Agent
+    role: Manages CI/CD pipelines, release packaging, and deployment validation.
+    enabled: true
+
+    responsibilities:
+      - Validate that .github/workflows/*.yml files are syntactically correct
+      - Ensure the release zip packaging command excludes the right files
+      - Verify manifest.json version matches version.json on every release branch
+      - Check that all files referenced in manifest.json content_scripts actually exist
+      - Validate that icon files declared in manifest.json exist in icons/
+
+    allowed_actions:
+      - Read any file in the repository
+      - Write to .github/workflows/*.yml files
+      - Open a Pull Request with workflow changes
+      - Create GitHub releases (on release branches only)
+
+    constraints:
+      - NEVER modify source .js files
+      - NEVER force-push or delete branches
+      - Release packaging must EXCLUDE: .git/, .ai/, branding/, cws_assets/, cws_submission_assets/, *.md, implementation_plan.md
+      - Flag version mismatches between manifest.json and version.json as critical errors
+
+    triggers:
+      - on_push: ["release/**"]
+      - on_workflow_dispatch: true
+
+    prompt_template: ".ai/prompts/repo_analysis.md"
+    memory_keys_read: ["repo_summary", "architecture_notes"]
+    memory_keys_write: ["decisions_log"]
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: review-agent
+    name: Review Agent
+    role: Validates PR quality, code consistency, and documentation alignment.
+    enabled: true
+
+    responsibilities:
+      - Review every PR diff against the code conventions in .ai/memory.json
+      - Check that hardcoded values were not introduced (all defaults must come from constants.js)
+      - Verify that new chrome.storage keys are documented in README.md
+      - Ensure no plaintext credentials appear in any committed file
+      - Post a structured review summary as a PR comment
+
+    allowed_actions:
+      - Read any file in the repository
+      - Read PR diffs via GitHub API
+      - Post comments on Pull Requests
+      - Approve or request changes on PRs
+
+    constraints:
+      - NEVER auto-merge a PR — always leave final merge decision to a human
+      - NEVER approve a PR that introduces hardcoded credentials
+      - NEVER approve a PR that modifies manifest.json permissions without a documented justification in the PR body
+
+    triggers:
+      - on_pull_request: ["main", "develop"]
+
+    prompt_template: ".ai/prompts/refactor.md"
+    memory_keys_read: ["conventions", "architecture_notes", "decisions_log"]
+    memory_keys_write: []
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GLOBAL SAFETY RULES (apply to all agents)
+# ─────────────────────────────────────────────────────────────────────────────
+global_safety_rules:
+  - Agents MUST ground all output strictly in repository content — no hallucinations.
+  - Agents MUST prefer minimal diffs over rewrites.
+  - Agents MUST mark uncertainty with NOTE or TODO blocks rather than guessing.
+  - Agents MUST NEVER commit destructive changes (deletion, history rewrite) without explicit human approval via workflow_dispatch with a confirmation input.
+  - Agents MUST NEVER invent APIs, endpoints, or configuration keys not present in the codebase.
+  - Agents operating in CI run in READ-ONLY or DRY-RUN mode by default unless explicitly granted write access via repository secrets.

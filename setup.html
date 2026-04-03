@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Faucet Pro | Setup Wizard</title>
+  <title>FaucetPick | Setup Wizard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
@@ -128,11 +128,12 @@
 
   <div class="wizard-container">
     <div class="hero-icon">💸</div>
-    <h1>Faucet Pro</h1>
+    <h1>FaucetPick</h1>
     <p class="sub">Quick Setup Wizard</p>
 
     <div class="wizard-steps">
       <div class="wizard-dot active"></div>
+      <div class="wizard-dot"></div>
       <div class="wizard-dot"></div>
       <div class="wizard-dot"></div>
       <div class="wizard-dot"></div>
@@ -142,7 +143,7 @@
     <section class="step-content active" id="step1">
       <div style="flex:1; display:flex; flex-direction:column; justify-content:center;">
         <h2 style="margin-bottom:12px;">Get Started</h2>
-        <p style="color:var(--text-dim); line-height:1.6;">Automate your favorite faucets in just a few clicks. Faucet Pro handles the claims while you relax.</p>
+        <p style="color:var(--text-dim); line-height:1.6;">Automate your favorite pick-style faucets in just a few clicks. FaucetPick handles the claims while you relax.</p>
       </div>
       <div class="wizard-footer">
         <button class="btn-p" id="welcomeBtn">Next Step ➔</button>
@@ -167,16 +168,28 @@
         <!-- Wallet inputs injected here -->
       </div>
       <div class="wizard-footer">
-        <button class="btn-p step-next-btn">Finish Setup ➔</button>
+        <button class="btn-p" id="walletNextBtn">Next Step ➔</button>
       </div>
     </section>
 
-    <!-- STEP 4: FINISH -->
+    <!-- STEP 4: VERIFICATION -->
     <section class="step-content" id="step4">
+      <h2 style="margin-bottom:12px; font-size:18px;">Account Verification</h2>
+      <p style="color:var(--text-dim); font-size:13px; margin-bottom:15px; line-height:1.4;">Ensure you are registered and logged in to each site. Automation will only work for authenticated sites.</p>
+      <div class="selection-panel" id="verificationList">
+        <!-- Verification rows injected here -->
+      </div>
+      <div class="wizard-footer">
+        <button class="btn-p" id="verifyNextBtn" disabled>Check Status ➔</button>
+      </div>
+    </section>
+
+    <!-- STEP 5: FINISH -->
+    <section class="step-content" id="step5">
       <div style="flex:1; display:flex; flex-direction:column; justify-content:center;">
         <div class="hero-icon" style="font-size:64px;">✨</div>
         <h2 style="margin-bottom:10px;">All Set!</h2>
-        <p style="color:var(--text-dim); line-height:1.6;">Everything is configured. The bot will now start monitoring your selected sites.</p>
+        <p style="color:var(--text-dim); line-height:1.6;">Everything is configured. FaucetPick will now start monitoring your verified sites.</p>
       </div>
       <div class="wizard-footer">
         <button class="btn-p" id="launchBtn">Go to Dashboard ➔</button>

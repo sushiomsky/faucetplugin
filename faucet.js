@@ -148,17 +148,29 @@ async function claimBonusFaucets() {
       if (hasCaptchaWidget()) {
         log(`Bonus round ${round}: waiting for captcha…`);
         chrome.runtime.sendMessage({ type: "focus-tab" });
-        await sleep(400);
-        setTimeout(tryClickCaptchaWidget, 1000);
-        const token = await Promise.race([
-          waitForCaptchaToken(),
-          sleep(30000).then(() => null)
-        ]);
-        if (!token) { 
-          log("Bonus captcha timed out — stopping bonus loop"); 
+        await sleep(1000);
+        
+        let captchaResolved = false;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          setTimeout(tryClickCaptchaWidget, 1500);
+          const token = await Promise.race([
+            waitForCaptchaToken(20000), 
+            sleep(25000).then(() => null)
+          ]);
+          if (token) {
+            log(`Bonus captcha resolved on attempt ${attempt + 1}`);
+            captchaResolved = true;
+            break;
+          }
+          log(`Bonus captcha timeout on attempt ${attempt + 1}, rotating…`);
+          const rotated = await rotateCaptchaType();
+          if (!rotated) break;
+        }
+
+        if (!captchaResolved) { 
+          log("Bonus captcha failed all attempts — stopping bonus loop"); 
           break; 
         }
-        log("Bonus captcha resolved");
         await sleep(1500);
       }
 
@@ -202,32 +214,44 @@ async function runFaucet() {
     await sleep(1000);
     scrollToBottom();
 
-    const hasCaptcha = hasCaptchaWidget();
-    log("Captcha widget present:", hasCaptcha);
+    let captchaResolved = false;
+    let captchaAttempts = 0;
+    const maxCaptchaAttempts = 4;
 
-    if (hasCaptcha) {
-      log("Captcha detected on faucet page, requesting tab focus...");
+    while (captchaAttempts < maxCaptchaAttempts) {
+      const hasCaptcha = hasCaptchaWidget();
+      if (!hasCaptcha) {
+        log("No captcha detected — proceeding.");
+        captchaResolved = true;
+        break;
+      }
+
+      log(`Captcha attempt ${captchaAttempts + 1}/${maxCaptchaAttempts}...`);
       chrome.runtime.sendMessage({ type: "focus-tab" });
-      await sleep(500);
+      await sleep(2500); // Wait for widget to settle
 
-      log("Attempting initial captcha widget click...");
-      const clicked = tryClickCaptchaWidget();
-      if (clicked) {
-        log("Initial captcha click succeeded, waiting for response...");
-        await sleep(window.CAPTCHA_SETTLE_MS);
-      } else {
-        log("Initial captcha click failed, will retry in waitForCaptchaToken...");
+      tryClickCaptchaWidget();
+      const token = await waitForCaptchaToken(40000); // 40s per method
+
+      if (token) {
+        log("✓ Captcha resolved");
+        captchaResolved = true;
+        break;
       }
 
-      const token = await waitForCaptchaToken(window.MAX_WAIT_MS);
-      if (!token) {
-        log("✗ Captcha timeout on faucet page");
-        sendError("turnstile-timeout");
-        return;
+      log(`✗ Captcha timeout on attempt ${captchaAttempts + 1}`);
+      const rotated = await rotateCaptchaType();
+      if (!rotated) {
+        log("No more captcha methods to try.");
+        break;
       }
-      log("✓ Captcha resolved");
-    } else {
-      log("No captcha detected — proceeding directly to claim");
+      captchaAttempts++;
+    }
+
+    if (!captchaResolved) {
+      log("ERROR: All captcha attempts failed.");
+      sendError("captcha-failed-all-methods");
+      return;
     }
 
     const claimKeywords = ["claim", "collect", "roll", "submit", "get"];

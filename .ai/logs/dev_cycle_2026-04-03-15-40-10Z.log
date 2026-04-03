@@ -1,0 +1,203 @@
+═══════════════════════════════════════════════════════════════
+ Faucet Pro AI Agent System
+ Task:     repo-analysis
+ Agent:    doc-agent
+ Provider: openai / gpt-4o
+ Mode:     DRY RUN (prompt will be printed, LLM will not be called)
+═══════════════════════════════════════════════════════════════
+
+Prompt size: 143821 characters
+
+─── DRY RUN: PROMPT PAYLOAD (first 2000 chars) ───
+---
+# repo_analysis.md — Prompt Template for doc-agent / ops-agent
+# Full repository analysis task. Produces a comprehensive technical snapshot.
+---
+
+# Role
+
+You are performing a **full repository analysis** for the Faucet Pro Chrome Extension (`sushiomsky/faucetplugin`).
+Your output will be written to `.ai/memory.json` and used by all other agents as their foundational context.
+
+---
+
+# Critical Rules — Read Before Proceeding
+
+1. **Only report what is in the code.** Do not describe features that are not implemented.
+2. **Be precise.** Use exact function names, storage key names, message type strings, and file paths from the source.
+3. **Note uncertainties.** If something is unclear from the code, mark it as `"status": "uncertain"`.
+4. **Do not evaluate.** This is a factual analysis, not a code review. Save opinions for the refactor agent.
+
+---
+
+# Files to Read
+
+Read ALL of the following files before writing any output:
+1. `manifest.json`
+2. `version.json`
+3. `constants.js`
+4. `background.js`
+5. `content.js`
+6. `utils.js`
+7. `selectors.js`
+8. `auth.js`
+9. `crypto-utils.js`
+10. `captcha.js`
+11. `faucet.js`
+12. `dice.js`
+13. `withdraw.js`
+14. `popup.js`
+15. `setup.js`
+16. `popup.html`
+17. `setup.html`
+
+---
+
+# Task — Analysis Steps
+
+## Step 1 — Extension Metadata
+From `manifest.json`:
+- Name, version, manifest_version
+- All permissions listed
+- All host_permissions listed
+- content_scripts load order (exact file list and run_at timing)
+- Background service worker file
+- Default popup file
+
+## Step 2 — Faucet Configuration
+From `constants.js → makeFaucetDefaults()`:
+- List all supported faucets (url, label)
+- Map each to its CoinGecko ID and default withdrawal threshold
+- List all dice strategies and their identifiers
+- List all configurable per-faucet fields with types and defaults
+
+## Step 3 — Background Scheduler
+From `background.js`:
+- List all alarm names and their periods
+- Describe the scheduler loop (checkAndRun) in 3–5 sentences
+- List all message types handled 
+─── END DRY RUN ───
+═══════════════════════════════════════════════════════════════
+ Faucet Pro AI Agent System
+ Task:     update-docs
+ Agent:    doc-agent
+ Provider: openai / gpt-4o
+ Mode:     DRY RUN (prompt will be printed, LLM will not be called)
+═══════════════════════════════════════════════════════════════
+
+Prompt size: 139152 characters
+
+─── DRY RUN: PROMPT PAYLOAD (first 2000 chars) ───
+---
+# doc_update.md — Prompt Template for doc-agent
+# Optimized for advanced reasoning LLMs (GPT-4o, Claude 3.5+, Gemini 1.5 Pro).
+# Uses repo inspection only. Hallucination is forbidden.
+---
+
+# Role
+
+You are the **doc-agent** for the Faucet Pro repository (`sushiomsky/faucetplugin`).
+Your task is to audit and update Markdown documentation so it is 100% accurate relative to the current source code.
+
+---
+
+# Critical Rules — Read Before Proceeding
+
+1. **NEVER invent functionality.** If a feature is not present in the JavaScript source files, do not document it.
+2. **NEVER guess.** If you are not certain, add a `> NOTE: TODO — verify this against [filename]` block.
+3. **Prefer minimal diffs.** Only change what is inaccurate, outdated, or missing.
+4. **Ground every fact in a file.** For each claim you make, cite the source file and line number in your reasoning (you do not need to include the citation in the output).
+5. **Commands must be copy-pasteable.** Test every command mentally before writing it.
+
+---
+
+# Context You Have Been Given
+
+- Memory context: `.ai/memory.json` (repo summary, architecture, conventions, known issues)
+- All source `.js` files
+- All `.md` files to be audited
+- `manifest.json` and `version.json`
+
+---
+
+# Task
+
+## Step 1 — Inventory
+For each `.md` file provided:
+- List every factual claim: version numbers, feature descriptions, commands, storage keys, URLs, permission names.
+
+## Step 2 — Verify Against Source
+For each factual claim:
+- PASS: Claim matches what is in the source code.
+- FAIL: Claim contradicts or is absent from the source code.
+- UNCERTAIN: Cannot be verified from the files provided.
+
+## Step 3 — Apply Fixes
+For each FAIL or UNCERTAIN:
+- FAIL → Replace with the correct information from the source code.
+- UNCERTAIN → Add a `> NOTE: TODO — verify [specific thing] in [file]` block.
+
+## Step 4 — Fill Gaps
+Check whether the following sections exist and are adequate in `README.md`:
+- [ ] Project structure / file listing
+- [ ] Architecture
+─── END DRY RUN ───
+═══════════════════════════════════════════════════════════════
+ Faucet Pro AI Agent System
+ Task:     improve-test-coverage
+ Agent:    test-agent
+ Provider: openai / gpt-4o
+ Mode:     DRY RUN (prompt will be printed, LLM will not be called)
+═══════════════════════════════════════════════════════════════
+
+Prompt size: 63145 characters
+
+─── DRY RUN: PROMPT PAYLOAD (first 2000 chars) ───
+---
+# test_generation.md — Prompt Template for test-agent
+# Generates browser-native tests for Chrome Extension JavaScript.
+# No Node.js, no Jest, no npm. Only Web API + Chrome Extension stubs.
+---
+
+# Role
+
+You are the **test-agent** for the Faucet Pro repository (`sushiomsky/faucetplugin`).
+Your task is to improve test coverage by generating valid, runnable test stubs for uncovered functions.
+
+---
+
+# Critical Rules — Read Before Proceeding
+
+1. **No Node.js or npm.** This extension has no build system. Tests must run in a browser environment.
+2. **No Jest, Mocha, or other test frameworks** unless they are loaded via a CDN `<script>` tag in a test HTML file. Prefer self-contained vanilla JS tests.
+3. **Do not modify source files** to make tests pass — fix the tests instead.
+4. **Do not over-mock.** Tests that mock everything test nothing. Mock only the Chrome Extension APIs (`chrome.storage.local`, `chrome.runtime.sendMessage`) — not the business logic being tested.
+5. **Ground tests in actual behavior.** Read the function under test and write assertions that verify what the function actually does, not what you assume it might do.
+
+---
+
+# Context You Have Been Given
+
+- Source files to be tested (provided in the task invocation)
+- Memory context: `.ai/memory.json` (architecture, conventions)
+- Existing tests (from `/tests/` directory, if any)
+
+---
+
+# Task
+
+## Step 1 — Extract All Functions
+For each source file provided, list:
+- Every function declaration (`function foo(...)`)
+- Every function expression (`const foo = (...)  =>`, `foo: function(...)`)
+- Mark each: **PURE** (no Chrome API calls, no DOM, deterministic) or **IMPURE** (requires Chrome API or DOM)
+
+## Step 2 — Identify Coverage Gaps
+Cross-reference extracted functions against `/tests/` directory.
+List all functions with no corresponding test.
+
+## Step 3 — Prioritize by Testability
+Rank uncovered functions:
+1. **PURE utility functions** (highest priority) — easily testable, high value
+2. **Data normalization
+─── END DRY RUN ───

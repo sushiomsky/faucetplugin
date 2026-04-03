@@ -205,5 +205,59 @@ input:focus { border-color: var(--accent); outline: none; }
 .history-val { font-size: 12px; font-weight: 700; color: var(--status-ok); }
 .history-ts { font-size: 9px; color: var(--text-dim); text-align: right; }
 
-.save-indicator { position: absolute; bottom: 84px; left: 50%; transform: translateX(-50%); background: var(--status-ok); color: #000; padding: 6px 16px; border-radius: 20px; font-size: 11px; font-weight: 700; opacity: 0; pointer-events: none; transition: 0.4s; z-index: 1000; }
+/* ── Modal Overlay ── */
+.modal-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(10px);
+  z-index: 2000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fadeIn 0.2s ease;
+}
+.modal-overlay.active { display: flex; }
+
+.modal-content {
+  background: var(--panel);
+  border: 1px solid var(--glass-border);
+  border-radius: 28px;
+  width: 100%;
+  max-height: 90%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+  animation: modalScale 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes modalScale { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+
+.modal-header {
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--glass-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+#selectedSiteLabel { font-size: 14px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; }
+.modal-close { background: none; border: none; color: var(--text-dim); font-size: 24px; cursor: pointer; padding: 0 5px; }
+.modal-close:hover { color: #fff; }
+
+.modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+.modal-body::-webkit-scrollbar { width: 4px; }
+.modal-body::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 10px; }
+
+.modal-footer {
+  padding: 15px 20px 20px;
+  border-top: 1px solid var(--glass-border);
+}
+
+.save-indicator { position: absolute; bottom: 84px; left: 50%; transform: translateX(-50%); background: var(--status-ok); color: #000; padding: 6px 16px; border-radius: 20px; font-size: 11px; font-weight: 700; opacity: 0; pointer-events: none; transition: 0.4s; z-index: 3000; }
 .save-indicator.show { opacity: 1; transform: translateX(-50%) translateY(-10px); }

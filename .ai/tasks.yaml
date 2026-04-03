@@ -1,0 +1,259 @@
+# FaucetPick — AI Task Definitions
+# These tasks map to agent actions and are referenced by run.sh and CI workflows.
+# Version: 1.0.0 | Repo: sushiomsky/faucetplugin
+
+tasks:
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: update-docs
+    name: Update All Documentation
+    agent: doc-agent
+    description: >
+      Performs a full audit of all Markdown files in the repository root against
+      the current source code. Identifies and fixes inaccuracies, outdated commands,
+      missing features, and structural issues. Updates memory.json with any new findings.
+
+    input:
+      - path: "README.md"
+      - path: "PRIVACY_POLICY.md"
+      - path: "CONTRIBUTING.md"
+      - path: "STORE_LISTING.md"
+      - path: "manifest.json"
+      - path: "constants.js"
+      - path: "background.js"
+      - path: "content.js"
+      - path: "utils.js"
+      - path: "selectors.js"
+      - path: "auth.js"
+      - path: "crypto-utils.js"
+      - path: "dice.js"
+      - path: "faucet.js"
+      - path: "withdraw.js"
+      - path: "captcha.js"
+      - path: "version.json"
+      - path: ".ai/memory.json"
+
+    output:
+      - type: "modified_files"
+        paths: ["README.md", "PRIVACY_POLICY.md", "CONTRIBUTING.md", "STORE_LISTING.md"]
+      - type: "memory_update"
+        path: ".ai/memory.json"
+        keys: ["repo_summary", "known_issues"]
+
+    execution_steps:
+      - step: 1
+        action: "Read all input files listed above."
+      - step: 2
+        action: "For each .md file, compare every code snippet, command, configuration value, and feature description against the actual source code."
+      - step: 3
+        action: "Identify all discrepancies: outdated content, missing features, wrong paths/commands, incorrect env var names."
+      - step: 4
+        action: "Apply minimal fixes to each .md file. Add NOTE/TODO blocks for anything uncertain."
+      - step: 5
+        action: "Update .ai/memory.json → known_issues with any newly discovered documentation gaps."
+      - step: 6
+        action: "Output a structured summary of all changes made."
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: sync-readme-with-code
+    name: Sync README Version and Feature List
+    agent: doc-agent
+    description: >
+      A focused task that synchronises the version number, supported faucets list,
+      and storage key table in README.md against manifest.json, version.json, and constants.js.
+      Runs faster than update-docs because it reads fewer files.
+
+    input:
+      - path: "README.md"
+      - path: "manifest.json"
+      - path: "version.json"
+      - path: "constants.js"
+
+    output:
+      - type: "modified_files"
+        paths: ["README.md"]
+
+    execution_steps:
+      - step: 1
+        action: "Read manifest.json → verify README version header matches."
+      - step: 2
+        action: "Read constants.js → CRYPTO_PRICE_IDS and DEFAULT_USD5_WD_THRESHOLD_BY_HOST → verify README platform table is complete and correct."
+      - step: 3
+        action: "Read constants.js → makeFaucetDefaults() → verify README faucet configuration object is accurate."
+      - step: 4
+        action: "Apply targeted patches to README.md only."
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: detect-breaking-changes
+    name: Detect Breaking Changes in a PR Diff
+    agent: review-agent
+    description: >
+      Analyses a pull request diff to identify breaking changes: removed chrome.storage keys,
+      changed message types, removed exported functions, new required permissions, or selector
+      key renames that could break the other scripts.
+
+    input:
+      - type: "pr_diff"
+        description: "The unified diff of the pull request."
+      - path: "constants.js"
+      - path: "utils.js"
+      - path: "selectors.js"
+      - path: ".ai/memory.json"
+
+    output:
+      - type: "pr_comment"
+        format: "markdown"
+        sections: ["breaking_changes", "warnings", "safe_changes", "verdict"]
+
+    execution_steps:
+      - step: 1
+        action: "Parse the PR diff. Identify all modified functions, constants, and storage keys."
+      - step: 2
+        action: "For each removal or rename, search all other files for references to the removed symbol."
+      - step: 3
+        action: "Flag any symbol that is removed from one file but still referenced in another as a BREAKING CHANGE."
+      - step: 4
+        action: "Check manifest.json for new or modified permissions — flag as WARNING if present."
+      - step: 5
+        action: "Post structured comment on the PR."
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: improve-test-coverage
+    name: Improve Test Coverage
+    agent: test-agent
+    description: >
+      Scans all JavaScript source files, identifies functions with no corresponding test,
+      and generates test stubs for the highest-priority untested functions.
+      Prioritises functions in constants.js, utils.js, and selectors.js as they are
+      shared across all content scripts and the background worker.
+
+    input:
+      - path: "constants.js"
+      - path: "utils.js"
+      - path: "selectors.js"
+      - path: "crypto-utils.js"
+      - path: "auth.js"
+      - path: "faucet.js"
+      - path: "withdraw.js"
+      - path: "dice.js"
+      - path: ".ai/memory.json"
+
+    output:
+      - type: "new_files"
+        directory: "tests/"
+      - type: "memory_update"
+        path: ".ai/memory.json"
+        keys: ["known_issues"]
+
+    execution_steps:
+      - step: 1
+        action: "Parse each .js file and extract all function declarations (function X, const X =, X: function)."
+      - step: 2
+        action: "Check the /tests/ directory for existing tests. Map test names to source functions."
+      - step: 3
+        action: "Identify all functions with zero test coverage."
+      - step: 4
+        action: "Rank by priority: (1) pure utility functions, (2) data normalization, (3) async orchestration."
+      - step: 5
+        action: "Generate browser-native test stubs (no Node.js/Jest required) for the top 10 uncovered functions."
+      - step: 6
+        action: "Write stubs to tests/<filename>.test.js."
+      - step: 7
+        action: "Update .ai/memory.json → known_issues with remaining uncovered function list."
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: refactor-dead-code
+    name: Refactor Dead Code
+    agent: dev-agent
+    description: >
+      Identifies unreferenced functions, unused constants, and commented-out debug blocks
+      in the JavaScript source. Produces a minimal, safe refactoring PR.
+      Runs only in dry-mode in CI — must be approved before applying.
+
+    input:
+      - path: "constants.js"
+      - path: "utils.js"
+      - path: "selectors.js"
+      - path: "background.js"
+      - path: "content.js"
+      - path: "auth.js"
+      - path: "faucet.js"
+      - path: "withdraw.js"
+      - path: "dice.js"
+      - path: "captcha.js"
+
+    output:
+      - type: "dry_run_diff"
+        description: "A unified diff of proposed changes, not yet applied."
+
+    execution_steps:
+      - step: 1
+        action: "Parse all .js files and build a reference map: for each exported symbol, count how many times it appears across all files."
+      - step: 2
+        action: "Flag any symbol with a count of 1 (only defined, never used elsewhere) as a dead code candidate."
+      - step: 3
+        action: "For each candidate — do NOT remove automatically. Instead, add a // TODO: verify unused before removing comment."
+      - step: 4
+        action: "Output a dry-run diff of all suggested annotations for human review."
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: validate-ci
+    name: Validate CI/CD Workflows
+    agent: ops-agent
+    description: >
+      Validates all GitHub Actions workflow files for syntax correctness, checks
+      that all referenced scripts and secrets are accounted for, and verifies that
+      the release packaging command excludes the correct files.
+
+    input:
+      - path: ".github/workflows/"
+      - path: "manifest.json"
+      - path: "version.json"
+      - path: ".ai/agents.yaml"
+
+    output:
+      - type: "validation_report"
+        format: "markdown"
+        sections: ["syntax_check", "secret_references", "packaging_check", "version_sync", "verdict"]
+
+    execution_steps:
+      - step: 1
+        action: "Parse all .yml files in .github/workflows/ and check for YAML syntax errors."
+      - step: 2
+        action: "List all secrets referenced (secrets.XXX) and verify they are documented in CONTRIBUTING.md."
+      - step: 3
+        action: "Find the release zip command and verify it excludes: .git/, .ai/, branding/, cws_assets/, cws_submission_assets/, *.md."
+      - step: 4
+        action: "Compare manifest.json.version with version.json.version — flag mismatch as CRITICAL."
+      - step: 5
+        action: "Output structured validation report."
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: repo-analysis
+    name: Full Repository Analysis
+    agent: doc-agent
+    description: >
+      Performs a complete analysis of the repository and writes a fresh snapshot
+      to .ai/memory.json. This should be run after major refactors or when onboarding
+      a new contributor or AI agent.
+
+    input:
+      - path: "."  # Entire repository
+      - path: ".ai/memory.json"
+
+    output:
+      - type: "memory_update"
+        path: ".ai/memory.json"
+        keys: ["repo_summary", "architecture_notes", "conventions", "known_issues"]
+
+    execution_steps:
+      - step: 1
+        action: "Read manifest.json for extension metadata (name, version, permissions, content_scripts order)."
+      - step: 2
+        action: "Read constants.js for the faucet list, price IDs, withdrawal thresholds, and dice strategies."
+      - step: 3
+        action: "Read background.js for scheduler logic, message types, alarm names, and storage key usage."
+      - step: 4
+        action: "Read content.js, utils.js, selectors.js for content-script architecture."
+      - step: 5
+        action: "Summarize all findings and write to .ai/memory.json."

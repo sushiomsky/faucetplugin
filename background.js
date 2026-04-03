@@ -3,7 +3,7 @@ const ALARM_NAME = "faucet-tick";
 const SITE_PHASE_TIMEOUT_MS = 20 * 60 * 1000;
 const DEBUG = false;
 
-function log(...a) { if (DEBUG) console.log("[FaucetPro:BG]", ...a); }
+function log(...a) { if (DEBUG) console.log("[FaucetPick:BG]", ...a); }
 
 // Multi-site configuration: all enabled faucets are queued sequentially
 const DEFAULT_SETTINGS = {

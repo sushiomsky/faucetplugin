@@ -105,7 +105,7 @@ async function refreshStatus() {
           <circle class="progress-ring-circle" cx="35" cy="35" r="32" style="stroke-dashoffset: ${offset}"></circle>
         </svg>
         <span class="progress-ring-percentage">${perc}%</span>
-        <span class="token-symbol">${f.label.toUpperCase()}</span>
+        <span class="token-symbol">${f.coin || f.label.toUpperCase()}</span>
       </div>
       <div class="card-meta">
         <div class="card-site-name">${host}</div>
@@ -113,6 +113,13 @@ async function refreshStatus() {
         <div class="card-site-balance">${lastLog?.balance ? lastLog.balance.toFixed(4) : "–"}</div>
       </div>
     `;
+    card.onclick = () => {
+      const idx = faucets.indexOf(f);
+      if (idx !== -1) {
+        selectedFaucetIndex = idx;
+        renderConfigForSite(idx);
+      }
+    };
     dashboardGrid.appendChild(card);
   });
 
@@ -125,7 +132,7 @@ async function refreshStatus() {
       <div style="display:flex; align-items:center; gap:12px;">
         <div style="width:32px; height:32px; border-radius:8px; background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; color:var(--accent);">${f.label[0].toUpperCase()}</div>
         <div>
-          <div style="font-size:12px; font-weight:700;">${f.label.toUpperCase()}</div>
+          <div style="font-size:12px; font-weight:700;">${f.coin || f.label.toUpperCase()}</div>
           <div style="font-size:10px; color:var(--text-dim);">${hostname(f.url)}</div>
         </div>
       </div>
@@ -136,7 +143,6 @@ async function refreshStatus() {
     `;
     card.onclick = () => {
       selectedFaucetIndex = i;
-      document.querySelectorAll(".nav-item")[3].click();
       renderConfigForSite(i);
     };
     sitesListContainer.appendChild(card);
@@ -212,13 +218,13 @@ async function loadSettings() {
 
 function renderConfigForSite(index) {
   const f = currentFaucets[index];
-  const section = document.getElementById("siteConfigSection");
+  const modal = document.getElementById("siteModal");
   const card = document.getElementById("siteConfigCard");
   const label = document.getElementById("selectedSiteLabel");
 
   if (!f) return;
-  section.style.display = "block";
-  label.textContent = f.label + " Settings";
+  modal.classList.add("active");
+  label.textContent = (f.coin || f.label.toUpperCase()) + " Settings";
 
   const host = hostname(f.url);
   const minThreshold = minWdThresholds[host];
@@ -252,7 +258,15 @@ function renderConfigForSite(index) {
       <label class="label">Wallet / Payout Address</label>
       <input type="text" id="fwdaddr" value="${f.wdAddress || ""}" placeholder="Enter your address">
     </div>
+    <div style="margin-top:15px;">
+      <button class="btn-secondary" id="openSiteBtn" style="width:100%; background:var(--glass-border); border:none; color:#fff; padding:10px; border-radius:12px; font-size:11px; cursor:pointer; font-weight:600;">🌐 Open Signup Page (?ref=)</button>
+    </div>
   `;
+
+  card.querySelector("#openSiteBtn").addEventListener("click", () => {
+    const refUrl = f.referralId ? `${f.url.replace(/\/$/, '')}/signup.php?ref=${f.referralId}` : f.url;
+    window.open(refUrl, "_blank");
+  });
 
   card.querySelectorAll("input").forEach(el => {
     el.addEventListener("input", () => {
@@ -265,6 +279,22 @@ function renderConfigForSite(index) {
     });
   });
 }
+
+function closeModal() {
+  document.getElementById("siteModal").classList.remove("active");
+  refreshStatus();
+}
+
+document.getElementById("modalClose").onclick = closeModal;
+document.getElementById("modalSaveBtn").onclick = async () => {
+  await saveBtn.onclick(); 
+  closeModal();
+};
+
+window.onclick = (event) => {
+  const modal = document.getElementById("siteModal");
+  if (event.target === modal) closeModal();
+};
 
 saveBtn.onclick = async () => {
   const faucetsToSave = await Promise.all(currentFaucets.map(async f => {

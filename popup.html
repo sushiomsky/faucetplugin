@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Faucet Pro v2.6</title>
+  <title>FaucetPick v2.6</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
@@ -13,7 +13,7 @@
 </div>
 
 <header>
-  <h1>Faucet Pro v2.6</h1>
+  <h1>FaucetPick v2.6</h1>
   <div class="header-status">
     <div class="pulse-dot"></div>
     <span id="headerStatusText">Status: Ready</span>
@@ -129,13 +129,6 @@
         </div>
       </div>
 
-      <div class="config-group" id="siteConfigSection" style="display:none;">
-        <div class="group-header"><span>💎</span> <span id="selectedSiteLabel">Site Details</span></div>
-        <div class="input-card" id="siteConfigCard">
-          <!-- Dynamic per-site config injected here -->
-        </div>
-      </div>
-
       <button class="btn-pro" id="saveBtn" style="margin-top:10px;">💾 Save Changes</button>
       
       <div style="display:flex; gap:10px; margin-top:20px; opacity:0.6;">
@@ -165,7 +158,20 @@
   </div>
 </nav>
 
-<div class="save-indicator" id="saveMsg">Settings Saved Successfully</div>
+<div class="modal-overlay" id="siteModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <span id="selectedSiteLabel">Site Settings</span>
+      <button class="modal-close" id="modalClose">&times;</button>
+    </div>
+    <div class="modal-body" id="siteConfigCard">
+      <!-- Dynamic config injected here -->
+    </div>
+    <div class="modal-footer">
+      <button class="btn-pro" id="modalSaveBtn">Save & Close</button>
+    </div>
+  </div>
+</div>
 
 <script src="constants.js"></script>
 <script src="crypto-utils.js"></script>

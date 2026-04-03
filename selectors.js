@@ -107,9 +107,11 @@ const SiteSelectors = {
       'input[type="checkbox"][name*="turnstile" i]'
     ],
     captchaTurnstileWidget: ['.cf-turnstile', '[id*="turnstile" i]', '[class*="turnstile" i]', '[data-turnstile-callback]'],
-    captchaHCaptchaWidget: ['.h-captcha'],
+    captchaHCaptchaWidget: ['.h-captcha', '#hCaptchaBox'],
     captchaGenericWidget: ['[data-sitekey]'],
-    captchaIconWidget: ['.iconcaptcha-holder'],
+    captchaIconWidget: ['.iconcaptcha-holder', '.iconcaptcha-widget'],
+    captchaPCaptchaWidget: ['#pCaptcha', '.captcha-container'],
+    captchaSelect: ['#select_captcha', 'select[name*="captcha" i]'],
     captchaTokenCloudflare: ['input[name="cf-turnstile-response"]', 'input[name="h-captcha-response"]', 'input[name="g-recaptcha-response"]'],
     captchaTokenIcon: ['input[name="iconcaptcha-token"]', 'input[name="ic-token"]', '.iconcaptcha-token'],
     captchaIconPassed: ['.iconcaptcha-holder.iconcaptcha-passed', '.iconcaptcha-holder[data-completed="true"]'],

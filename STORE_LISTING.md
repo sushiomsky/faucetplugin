@@ -1,11 +1,11 @@
-# Chrome Web Store Listing - Faucet Pro
+# Chrome Web Store Listing - FaucetPick
 
 ## 📝 Description
-**Faucet Pro: The Gold Standard in Faucet Automation**
+**FaucetPick: The Gold Standard in Faucet Automation**
 
-Tired of manually clicking on faucets all day? Faucet Pro is a premium, professional-grade browser extension designed to automate your favorite cryptocurrency faucets with a single click. Our mission is to provide a clean, secure, and highly efficient "set-and-forget" experience.
+Tired of manually clicking on faucets all day? FaucetPick is a premium, professional-grade browser extension designed to automate your favorite "pick-style" cryptocurrency faucets with a single click. Our mission is to provide a clean, secure, and highly efficient "set-and-forget" experience.
 
-**✨ Why Choose Faucet Pro?**
+**✨ Why Choose FaucetPick?**
 *   **Premium & Professional**: A modern, glassmorphic dashboard that makes automation a breeze.
 *   **Smart Scheduling**: Intelligent engine that autonomously monitors and claims from your favorite sites.
 *   **Human-Like Interaction**: Advanced anti-detection technology with randomized delays and "Long Breaks" (65-80 minutes) to keep your accounts safe.
@@ -27,7 +27,7 @@ Tired of manually clicking on faucets all day? Faucet Pro is a premium, professi
 *   **Zero Data Collection**: We never track your activity, see your balances, or collect personal information.
 
 **🚀 Version 2.6.0 - Latest Enhancements:**
-*   🎉 **New Setup Wizard**: A streamlined 3-step setup process to get you started in seconds.
+*   🎉 **New Setup Wizard**: A streamlined 4-step setup process to get you started with verified accounts.
 *   ⚡ **Advanced Anti-Detection**: Optimized native click emulation for maximum stability and safety.
 *   📊 **Rebranded Dashboard**: Cleaned up layout with a focused "Bot Status" monitor and live portfolio tracking.
 *   🔒 **Improved Reliability**: Enhanced handling of withdrawal thresholds and Telegram alert delivery.

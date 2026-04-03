@@ -1,14 +1,15 @@
 {
   "manifest_version": 3,
-  "name": "Faucet Pro: Intuitive Automation Tool",
+  "name": "FaucetPick: Automated Faucet Claims",
   "version": "2.6.0",
-  "description": "The most intuitive multi-chain automation tool for claiming faucets. Clean, professional, and incredibly easy to use.",
+  "description": "Premium automation for pick-style faucets. Set-and-forget claiming for litepick, dogepick, solpick and more.",
   "permissions": [
     "tabs",
     "alarms",
     "storage",
     "scripting",
-    "debugger"
+    "debugger",
+    "cookies"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -23,7 +24,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Faucet Pro",
+    "default_title": "FaucetPick",
     "default_icon": {
       "16": "icons/icon_16.png",
       "48": "icons/icon_48.png",

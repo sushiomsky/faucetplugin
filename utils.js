@@ -28,7 +28,7 @@ window.lastPhaseHeartbeatAt = 0;
 window.DEBUG = false; // Set to true for development
 function log(...a) {
   if (window.DEBUG) {
-    console.log("[FaucetPro]", ...a);
+    console.log("[FaucetPick]", ...a);
   }
 }
 function sleep(ms) {

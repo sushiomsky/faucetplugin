@@ -1,0 +1,300 @@
+{
+  "meta": {
+    "agent": "doc-agent",
+    "task": "repo-analysis",
+    "executed_by": "Antigravity (inline execution — no external LLM call needed)",
+    "version": "2.0.0",
+    "last_updated": "2026-04-03",
+    "repo": "sushiomsky/faucetplugin",
+    "description": "Full snapshot of FaucetPick after reading all 17 source files. Used as foundational context for all other agents."
+  },
+
+  "repo_summary": {
+    "name": "FaucetPick",
+    "version": "2.6.0",
+    "manifest_version": 3,
+    "type": "Chrome Browser Extension (Manifest V3 — Service Worker based)",
+    "language": "Vanilla JavaScript — no build step, no npm, no transpilation, no ES modules",
+    "entry_points": {
+      "service_worker": "background.js",
+      "content_script_orchestrator": "content.js",
+      "popup": "popup.html + popup.js + popup.css",
+      "setup_wizard": "setup.html + setup.js"
+    },
+    "content_script_load_order": [
+      "constants.js",
+      "crypto-utils.js",
+      "selectors.js",
+      "utils.js",
+      "captcha.js",
+      "auth.js",
+      "dice.js",
+      "faucet.js",
+      "withdraw.js",
+      "content.js"
+    ],
+    "content_script_run_at": "document_idle",
+    "content_script_matches": "<all_urls>",
+    "manifest_permissions": ["tabs", "alarms", "storage", "scripting", "debugger"],
+    "manifest_host_permissions": ["<all_urls>"],
+    "supported_faucets": [
+      { "url": "https://litepick.io/",  "label": "litepick", "coin": "LTC", "coingecko_id": "litecoin",     "default_wd_threshold": "0.05"   },
+      { "url": "https://dogepick.io/", "label": "dogepick", "coin": "DOGE","coingecko_id": "dogecoin",     "default_wd_threshold": "30"     },
+      { "url": "https://solpick.io/",  "label": "solpick",  "coin": "SOL", "coingecko_id": "solana",       "default_wd_threshold": "0.0325" },
+      { "url": "https://bnbpick.io/",  "label": "bnbpick",  "coin": "BNB", "coingecko_id": "binancecoin",  "default_wd_threshold": "0.009"  },
+      { "url": "https://tronpick.io/", "label": "tronpick", "coin": "TRX", "coingecko_id": "tron",         "default_wd_threshold": "40"     },
+      { "url": "https://polpick.io/",  "label": "polpick",  "coin": "POL", "coingecko_id": "matic-network","default_wd_threshold": "10"     }
+    ],
+    "version_check_url": "https://raw.githubusercontent.com/sushiomsky/faucetplugin/main/version.json",
+    "update_download_url_template": "https://github.com/sushiomsky/faucetplugin/raw/main/faucet-pro-v{version}.zip"
+  },
+
+  "architecture_notes": {
+    "scheduler": {
+      "description": "background.js runs a 1-minute Chrome alarm ('faucet-tick'). On each tick, requestCheckAndRun() serializes calls to checkAndRun(). checkAndRun() prunes stale/timed-out/duplicate active tabs, builds a list of due faucets, adds them to the claimQueue, and if no tabs are currently active pops the next URL from the queue and opens it as an inactive tab via chrome.tabs.create({ active: false }).",
+      "alarm_names": {
+        "faucet-tick": { "period_minutes": 1, "purpose": "Main scheduler heartbeat" },
+        "price-update": { "period_minutes": 15, "purpose": "Refresh CoinGecko USD prices" },
+        "protocol-sync": { "period_minutes": 720, "purpose": "Check GitHub for new extension version (every 12h)" }
+      },
+      "site_phase_timeout_ms": 1200000,
+      "single_tab_policy": "Only one active tab per faucet hostname at a time. Duplicates are closed and logged as duplicate-active-tab errors.",
+      "referral_link_handling": "If a faucet has a referralId configured and NO stored credentials, the tab is opened with ?ref={referralId} appended to the URL."
+    },
+
+    "content_script_flow": {
+      "description": "content.js is the orchestrator. It runs after all other scripts load. It first injects custom faucet selectors from settings, waits 1s for the page to settle, then checks if this is a plugin-managed tab (via check-plugin-tab message). If not a plugin tab, it exits immediately. Otherwise it detects the page type and calls the appropriate handler.",
+      "page_detection_functions": {
+        "hasLoginForm()": "Returns true if document.querySelector('input[type=\"password\"]') exists",
+        "isFaucetPage()": "Returns true if location.pathname.includes('faucet.php')",
+        "isDicebetPage()": "Returns true if location.pathname.includes('dice.php') OR /dice|dicebet/i.test(location.pathname)",
+        "isWithdrawPage()": "Returns true if /withdraw/i.test(location.pathname)"
+      },
+      "dispatch_logic": "isDicebetPage → runDicebet(); isWithdrawTab (from get-withdraw-info) → runWithdraw(address); hasLoginForm → runLogin(); isFaucetPage → runFaucet(); else → auto-recovery (redirect to faucet.php if on same host) or wait.",
+      "home_page_redirect": "If URL is root path (/) on a *.pick.io domain, waits 2s then redirects to /faucet.php (handles referral link landing pages).",
+      "after_claim_flow": "faucet-done → background checks: if dbEnabled → navigate to /dice.php; else if wdEnabled AND balance >= wdThreshold → navigate to /withdraw.php; else → closeTab and requestCheckAndRun()."
+    },
+
+    "modules": {
+      "constants.js": {
+        "purpose": "Single source of truth. Loaded by importScripts() in service worker, first in content_scripts, and as first <script> in popup.",
+        "exports_global": ["DICE_STRATEGY_ALL_IN_001", "DICE_STRATEGY_COMBINED_HIGH_ROLLER", "DEFAULT_DB_STRATEGY", "DEFAULT_DB_SIDE", "DEFAULT_DB_CHANCE", "DEFAULT_USD5_WD_THRESHOLD_BY_HOST", "CRYPTO_PRICE_IDS", "DEFAULT_RANDOM_MIN", "DEFAULT_RANDOM_MAX", "DEFAULT_HIGH_ROLLER_CONFIG", "DEFAULT_LONG_BREAK_ENABLED", "DEFAULT_LONG_BREAK_FREQUENCY", "DEFAULT_LONG_BREAK_MIN", "DEFAULT_LONG_BREAK_MAX", "DEFAULT_BOT_NAME"],
+        "key_functions": ["normalizeHost(host)", "toFiniteNumber(value, fallback)", "clampNumber(value, min, max)", "normalizeDiceSide(side)", "getPriceIdForHost(host)", "normalizeDbStrategy(rawStrategy, dbEnabled)", "normalizeDbChance(rawChance, dbStrategy)", "getDefaultHighRollerConfig()", "getDefaultWdThresholdForUrl(url)", "normalizeWdThresholdForUrl(url, rawThreshold)", "normalizeHighRollerConfig(rawConfig)", "makeFaucetDefaults()"]
+      },
+      "utils.js": {
+        "purpose": "Content-script runtime globals, page detection helpers, Chrome messaging wrappers.",
+        "window_globals_set": {
+          "POLL_MS": 500,
+          "MAX_WAIT_MS": 90000,
+          "POST_CLAIM_WAIT_MS": 5000,
+          "POST_WD_WAIT_MS": 5000,
+          "RANDOM_DELAY_MIN_MS": 15000,
+          "RANDOM_DELAY_MAX_MS": 60000,
+          "LOGIN_FORM_WAIT_MS": 20000,
+          "INPUT_SETTLE_MS": 500,
+          "CAPTCHA_SETTLE_MS": 1000,
+          "CAPTCHA_RETRY_MS": 1500,
+          "MAX_CAPTCHA_RETRIES": 60,
+          "NATIVE_CLICK_MIN_INTERVAL_MS": 900,
+          "DICE_FIXED_MULTIPLIER": 2.0,
+          "MIN_STARTING_BALANCE_BET_FRACTION": 0.10,
+          "PHASE_HEARTBEAT_INTERVAL_MS": 15000,
+          "FAUCET_HANG_TO_DICE_TIMEOUT_MS": 60000,
+          "DEFAULT_ALL_IN_CHANCE_PERCENT": 1,
+          "RANDOM_14_CHANCE_PERCENT": 14,
+          "RANDOM_14_MIN_BET_INTERVAL": 5,
+          "RANDOM_14_MAX_BET_INTERVAL": 20,
+          "RANDOM_14_STATE_STORAGE_KEY": "diceRandom14State",
+          "DEBUG": false,
+          "lastNativeClickAt": 0,
+          "lastPhaseHeartbeatAt": 0
+        },
+        "key_functions": ["log(...a)", "sleep(ms)", "sameHost(url1, url2)", "randomDelay()", "randomIntInclusive(min, max)", "getUsdFiveWdThresholdForHost(host)", "normalizeWdThresholdForHost(host, rawThreshold)", "getDicePageUrl()", "scrollToBottom()", "sendDone(balance)", "sendError(reason)", "sendWdDone()", "sendWdError(reason)", "sendPhaseHeartbeat(detail)", "isPluginTab()", "getWithdrawInfo()", "getCurrentTabState()", "isFaucetPage()", "isWithdrawPage()", "isDicebetPage()", "hasLoginForm()", "parseNumericValue(rawText)", "readBalance()", "getFaucetUrl()"]
+      },
+      "selectors.js": {
+        "purpose": "CSS selector registry. SiteSelectors object with get(), getFirstValid(), getAllValid(), injectCustom() methods.",
+        "selector_groups": ["balancePrimary", "balanceFallback", "loginForm", "loginPassword", "loginEmail", "loginSubmitBySelector", "loginSubmitByText", "captchaFrames", "captchaCheckboxes", "captchaTurnstileWidget", "captchaHCaptchaWidget", "captchaGenericWidget", "captchaIconWidget", "captchaTokenCloudflare", "captchaTokenIcon", "captchaIconPassed", "withdrawMinAmountText", "withdrawAddressInput", "withdrawMaxBtn", "withdrawSubmitBtn", "withdrawSubmitBtnFallback", "faucetBonusBadge", "faucetBonusMessages", "faucetBonusTab", "faucetBonusContent", "faucetClaimBtnPrimary", "faucetClaimBtnContext", "faucetClaimBtnContextAttr", "diceChanceInput", "diceBetButton", "diceAmountInput", "diceMultiplierInput"],
+        "host_specific_overrides": {
+          "litepick.io": { "balance": [".user_balance", ".header-balance"] }
+        },
+        "custom_injection": "injectCustom(customFaucets) reads settings.customFaucets and merges per-host selectors into SiteSelectors at runtime."
+      },
+      "captcha.js": {
+        "purpose": "Cloudflare Turnstile, hCaptcha, and IconCaptcha detection, clicking, and token polling.",
+        "supported_captcha_types": ["Cloudflare Turnstile (iframe + checkbox)", "hCaptcha", "IconCaptcha", "Generic [data-sitekey] widgets"],
+        "key_functions": ["getCaptchaToken()", "isVisibleForClick(el)", "dispatchMouseEvent(el, type, x, y)", "requestNativeClick(x, y, label)", "clickElementRobust(el, label)", "tryClickCaptchaWidget()", "hasCaptchaWidget()", "waitForCaptchaToken(timeoutMs)"],
+        "token_detection": "Uses MutationObserver on document.body for instant detection, falls back to setInterval polling every POLL_MS (500ms). Re-clicks captcha widget every CAPTCHA_RETRY_MS (1500ms). Refocuses tab every 10s via focus-tab message."
+      },
+      "auth.js": {
+        "purpose": "Login page automation. Reads encrypted credentials from storage, fills form, handles captcha, submits. Also captures and stores credentials from manual logins.",
+        "key_functions": ["getCredentials()", "triggerInputEvents(input)", "fillInput(input, value)", "waitForPasswordManagerAutofill(userInput, pwdInput, timeoutMs)", "setupManualLoginCapture()", "runLogin()"],
+        "credential_fallback": "If no stored credentials: waits for Chrome Password Manager autofill (up to 15s). setupManualLoginCapture() hooks the form submit event to capture and encrypt credentials for future automated runs."
+      },
+      "crypto-utils.js": {
+        "purpose": "AES-GCM 256-bit encryption for credential storage.",
+        "algorithm": "AES-GCM",
+        "key_size_bits": 256,
+        "iv_size_bytes": 12,
+        "iv_strategy": "crypto.getRandomValues(new Uint8Array(12)) — unique per encryption operation",
+        "key_storage": "chrome.storage.local key '_extension_key' stores Array.from(Uint8Array) of exported raw key bytes",
+        "format": "Encrypted values are prefixed with 'ENC:' followed by base64(iv + ciphertext). Plaintext values stored as-is.",
+        "key_functions": ["getKey()", "encrypt(text)", "decrypt(cipherText)"]
+      },
+      "faucet.js": {
+        "purpose": "Main faucet claim flow. Handles captcha, finds claim button, clicks it, runs bonus faucet rounds, reads balance, optionally navigates to dice.",
+        "key_functions": ["startDiceHangWatchdog(diceEnabled)", "bonusExhausted()", "findBonusTab()", "findClaimButtonInContext(context)", "findClaimButton()", "claimBonusFaucets()", "runFaucet()"],
+        "claim_keywords": ["claim", "collect", "roll", "submit", "get", "spin"],
+        "no_more_patterns": "/no more|no bonus|all claimed|come back|no free|exhausted|used up|no spins|0 spins/i",
+        "bonus_round_limit": 30,
+        "dice_hang_watchdog": "If dicebet is enabled and faucet page takes > FAUCET_HANG_TO_DICE_TIMEOUT_MS (60s), forcibly navigates to /dice.php"
+      },
+      "dice.js": {
+        "purpose": "DiceBet strategy engine. Two strategies: all-in-0.1 (single shot) and combined-high-roller (multi-round adaptive).",
+        "strategies": {
+          "all-in-0.1": "Single bet: all balance at configured chance%. Returns true if balance >= threshold after bet, false otherwise.",
+          "combined-high-roller": "Class CombinedHighRollerStrategy. Three modes: kelly_hybrid (default), streak_harvester (activated after win_streak >= streak_trigger), volatility_breakout (activated after volatility delta >= volatility_trigger). Uses ladder progression within active modes. Random 14% chance bets injected every 5-20 rounds (RANDOM_14 system) for variance. Persists per-host schedule to storage key 'diceRandom14State'."
+        },
+        "high_roller_config_fields": {
+          "base_bet_fraction": { "default": 0.10, "range": "0.00000001–0.95" },
+          "max_bet_fraction": { "default": 0.40, "range": "base_bet_fraction–1.0" },
+          "max_ladder_depth": { "default": 5, "range": "1–10" },
+          "history_window": { "default": 10, "range": "1–200" },
+          "streak_trigger": { "default": 1, "range": "1–50" },
+          "volatility_trigger": { "default": 4, "range": "1–history_window" }
+        },
+        "key_functions": ["normalizeDiceChance(rawChance, dbStrategy)", "loadRandom14Schedule(hostname)", "persistRandom14Schedule(hostKey, settledBetCount, nextRandom14BetAt)", "CombinedHighRollerStrategy (class)", "getDicebetConfig()", "setDicebetInputValue(input, value)", "findDicebetChanceInput()", "findDicebetBetButton()", "findDicebetAmountInput()", "findDicebetMultiplierInput()", "applyDicebetSide(side)", "readNumericInputById(id)", "applyDicebetTargets(chance)", "readDicebetBalanceWithRetries(maxRetries, delayMs)", "waitForDicebetIdle(maxWaitMs)", "placeDicebetRound(side)", "runAllIn001Dicebet(side, threshold, chance)", "runDicebet()"],
+        "site_integration": "Calls window.process_bet_game_dice() if available (site's own JS). Falls back to button click. Calls window.change_win_chance() / window.change_win_chance2(chance) and window.change_bet_amount() to sync site's internal state.",
+        "idle_detection": "Polls window.auto_betting_status !== 'running' every 250ms, max 120s before a bet and 180s after."
+      },
+      "withdraw.js": {
+        "purpose": "Automated withdrawal flow on /withdraw.php.",
+        "key_functions": ["scrapeMinimumWithdrawal()", "runWithdraw(address)"],
+        "flow": "Wait 2s → wait for jQuery (max 8s) → scrape minimum withdrawal amount → fill address input (via jQuery or React-compatible setter) → click #max_amount → wait for captcha → find and click submit button → wait 8s → sendWdDone()",
+        "address_filling": "Uses jQuery $(el).val(v).trigger('input').trigger('change') if available, else falls back to HTMLInputElement.prototype setter for React-controlled inputs.",
+        "min_wd_scraping": "Regex patterns on document.body.innerText, then selector-based lookup. Sends scraped-min-wd message to background for storage."
+      },
+      "popup.js": {
+        "purpose": "Extension popup dashboard. Refreshes every 1 second. Shows site grid with circular progress rings, history log, faucet config panel, and settings.",
+        "refresh_interval_ms": 1000,
+        "storage_keys_read": ["running", "settings", "activityLog", "activeTabs", "claimHistory", "cryptoPrices", "minWdThresholds", "updateAvailable", "updateVersion", "updateUrl", "claimCounts"],
+        "messages_sent": ["save-settings", "manual-run"],
+        "config_fields_exposed_in_ui": ["intervalMinutes", "minRandomMinutes", "maxRandomMinutes", "wdEnabled", "wdThreshold", "wdAddress"],
+        "NOTE": "DiceBet configuration (dbEnabled, dbChance, dbSide, dbStrategy, dbStrategyConfig) is NOT exposed in the popup UI. It exists in storage and content script flow but has no UI controls in popup.js or renderConfigForSite(). Likely managed via setup.js or a future settings panel."
+      },
+      "setup.js": {
+        "purpose": "First-run setup wizard (setup.html). Loads on first install before setupComplete is set in storage."
+      }
+    },
+
+    "message_types": {
+      "content_to_background": {
+        "faucet-done": "Faucet claim completed. Payload: { balance }",
+        "faucet-error": "Faucet claim failed. Payload: { reason }",
+        "withdraw-done": "Withdrawal submitted successfully. No payload.",
+        "withdraw-error": "Withdrawal failed. Payload: { reason }",
+        "phase-heartbeat": "Regular keep-alive from content script. Payload: { phase, detail, ts }",
+        "scraped-min-wd": "Reports scraped minimum withdrawal from page. Payload: { url, value }",
+        "native-click": "Request DevTools Protocol mouse click. Payload: { x, y, label }. Returns { ok, error }.",
+        "focus-tab": "Request background to bring tab to foreground. No payload.",
+        "check-plugin-tab": "Ask if current tab is managed by plugin. Returns { yes: boolean }.",
+        "get-withdraw-info": "Ask for withdrawal info for current tab. Returns { isWithdrawTab, address }.",
+        "get-tab-state": "Get full tab state object. Returns { tabState }."
+      },
+      "popup_to_background": {
+        "manual-run": "Force-run all enabled faucets immediately (resets claimHistory to 0).",
+        "save-settings": "Save new settings object. Payload: { settings }.",
+        "reset-all-sites": "Reset to factory defaults with first site enabled, clear all runtime state."
+      }
+    },
+
+    "storage_keys": {
+      "settings": "Object — full user config: { enabled, faucets[], customFaucets[], longBreakEnabled, longBreakFrequency, longBreakMin, longBreakMax, botName, telegram: { enabled, botToken, chatId } }",
+      "activeTabs": "Object keyed by tabId — { faucetUrl, phase, wdAddress?, startedAt, phaseStartedAt, lastHeartbeatAt }. phase values: 'faucet', 'withdraw'.",
+      "claimHistory": "Object keyed by faucetUrl (full URL, not host) — last successful claim timestamp (ms).",
+      "claimQueue": "Array of faucet URLs (strings) — pending execution queue.",
+      "claimCounts": "Object keyed by faucetUrl — integer total successful claim count. Used to trigger Long Break every N claims.",
+      "activityLog": "Array (max 30) of { url, status, reason?, balance?, ts }. status values: 'ok', 'error', 'wd-ok', 'wd-error'.",
+      "cryptoPrices": "Object { data: { [coingecko_id]: { usd: number } }, ts: timestamp }",
+      "running": "Boolean — whether scheduler is active.",
+      "updateAvailable": "Boolean — set by protocol-sync alarm.",
+      "updateVersion": "String — latest version from GitHub.",
+      "updateUrl": "String — download URL for latest version.",
+      "setupComplete": "Boolean — whether first-run wizard has been completed. Absence triggers wizard on popup open.",
+      "minWdThresholds": "Object keyed by hostname (without www.) — scraped minimum withdrawal values from site pages.",
+      "diceRandom14State": "Object keyed by normalized hostname — { settledBetCount, nextRandom14BetAt, updatedAt }. Per-host schedule state for the RANDOM_14 system in combined-high-roller strategy.",
+      "_extension_key": "Array (Uint8Array serialized as Array<number>) — AES-GCM raw key material. Present after first CryptoUtils.getKey() call."
+    },
+
+    "external_api_calls": [
+      { "url": "https://api.coingecko.com/api/v3/simple/price?ids={ids}&vs_currencies=usd", "purpose": "Fetch USD prices for all supported coins", "from": "background.js → fetchPrices()", "frequency": "Every 15 minutes via price-update alarm + once on service worker startup" },
+      { "url": "https://raw.githubusercontent.com/sushiomsky/faucetplugin/main/version.json?t={timestamp}", "purpose": "Check for extension updates (cache-busted)", "from": "background.js → checkProtocolUpdates()", "frequency": "Every 12 hours via protocol-sync alarm + once on service worker startup" },
+      { "url": "https://api.telegram.org/bot{botToken}/sendMessage", "purpose": "Send Telegram alerts for withdrawals and errors", "from": "background.js → sendTelegramAlert()", "frequency": "On withdrawal success, on error events. Only if telegram.enabled and credentials configured." }
+    ]
+  },
+
+  "conventions": {
+    "single_source_of_truth": "All faucet defaults, strategy identifiers, price IDs, and withdrawal thresholds MUST be defined in constants.js. Never hardcode in background.js, popup.js, etc.",
+    "storage": "Always use chrome.storage.local. Never use localStorage, sessionStorage, or cookies.",
+    "credentials": "Always encrypt via CryptoUtils.encrypt() before storing. Always decrypt via CryptoUtils.decrypt() before using. Check for 'ENC:' prefix to avoid double-encryption.",
+    "selectors": "All CSS selectors MUST be registered in SiteSelectors (selectors.js). Never call document.querySelector() with hardcoded strings elsewhere.",
+    "logging": "Use log() (respects window.DEBUG) for developer traces. Use console.log() for permanent operational messages in background.js. Never use console.log() for debug spam in content scripts.",
+    "error_handling": "All async content-script entry points must call sendError() or sendWdError() on failure. Background transitions tab to closeTab() on any terminal state (faucet-done, faucet-error, withdraw-done, withdraw-error).",
+    "no_external_deps": "No npm, no CDN scripts, no external libraries. Only the Web API and Chrome Extension API.",
+    "no_es_modules": "No import/export syntax. All files share a single global scope within content scripts (loaded by content_scripts array) and service worker (loaded by importScripts).",
+    "message_passing": "Content scripts communicate ONLY via chrome.runtime.sendMessage(). Background communicates back ONLY via sendResponse() (synchronous return) or chrome.tabs.update() for navigation.",
+    "faucet_url_convention": "All supported faucets follow *.pick.io domain pattern. Faucet page: /faucet.php, dice: /dice.php, withdraw: /withdraw.php (discovered from getWithdrawUrl() in background.js).",
+    "claimHistory_key": "claimHistory is keyed by the FULL faucet URL (e.g., 'https://litepick.io/'), not just the hostname. This matters for settings that use f.url as the key.",
+    "dicebet_ui_limitation": "DiceBet configuration fields (dbEnabled, dbChance, dbSide, dbStrategy, dbStrategyConfig) are stored per-faucet in settings but are NOT exposed in the current popup.js UI (renderConfigForSite only shows intervalMinutes, wdEnabled, wdThreshold, wdAddress). They must be set programmatically or via the setup wizard."
+  },
+
+  "known_issues": {
+    "no_automated_tests": "There is currently no automated test suite. All testing is manual.",
+    "dicebet_config_not_in_popup_ui": "DiceBet settings (dbEnabled, dbChance, dbSide, dbStrategy, dbStrategyConfig) are functional in the engine but have no UI controls in popup.js renderConfigForSite(). Users cannot configure DiceBet through the popup.",
+    "debugger_permission_conflict": "The debugger permission prevents users from opening Chrome DevTools on any tab the extension is currently attached to. Extension detaches immediately after each native click.",
+    "all_urls_permission_cws_risk": "The <all_urls> host permission triggers a permission warning on the Chrome Web Store and will receive additional policy review.",
+    "claimHistory_uses_full_url": "claimHistory is keyed by the full faucetUrl, but minWdThresholds is keyed by hostname. This inconsistency can cause issues if a site changes subdomain.",
+    "totalValue_not_implemented": "popup.js sets totalValueEl.textContent = 'RUNNING' unconditionally (line 71). The live USD portfolio sum is never computed in the popup despite the cryptoPrices data being available.",
+    "globalClaims_counts_log_entries": "popup.js sets globalClaimsEl.textContent = log.length (line 72), which counts activityLog entries (max 30), not actual total lifetime claims. claimCounts is a more accurate source.",
+    "no_ci_cd_before_this_system": "No CI/CD pipeline existed before the .github/workflows/ai-maintenance.yml file created by this AI system.",
+    "setup_js_unread": "setup.js was not read during this analysis pass. Its full implementation is not yet documented here."
+  },
+
+  "decisions_log": [
+    {
+      "date": "2026-04-03",
+      "decision": "Adopt Manifest V3 service worker architecture",
+      "reason": "MV3 is required by Chrome Web Store policy for new extensions. Background pages are not supported.",
+      "impact": "background.js runs as a service worker. importScripts() is used to load constants.js. No persistent global state between alarm invocations without chrome.storage."
+    },
+    {
+      "date": "2026-04-03",
+      "decision": "Store AES-GCM encryption key in chrome.storage.local",
+      "reason": "No server-side key management. Key must persist across browser restarts. Web Crypto API key export serialized to byte array.",
+      "impact": "If the user clears extension data, all encrypted credentials are permanently lost and must be re-entered manually."
+    },
+    {
+      "date": "2026-04-03",
+      "decision": "Sequential single-tab execution model",
+      "reason": "Opening multiple faucet tabs simultaneously increases detection risk and browser resource usage.",
+      "impact": "Total claim throughput is limited to one faucet at a time. Queue ensures fair ordering."
+    },
+    {
+      "date": "2026-04-03",
+      "decision": "Use Chrome DevTools Protocol (debugger API) for native click events",
+      "reason": "Standard JS .click() is easily detected as bot behavior. Hardware-level mouse events (Input.dispatchMouseEvent) bypass JS detection layers.",
+      "impact": "Requires debugger permission. Prevents user from opening DevTools on extension-managed tabs during the brief attach window. Extension detaches immediately after use."
+    },
+    {
+      "date": "2026-04-03",
+      "decision": "AI agent system initialized in /.ai/",
+      "reason": "To support ongoing self-maintenance of documentation and code quality without external tooling.",
+      "impact": "New .ai/ directory with agents.yaml, tasks.yaml, memory.json, prompt templates, and executable scripts. GitHub Actions CI/CD added."
+    },
+    {
+      "date": "2026-04-03",
+      "decision": "AI agents execute inline (Antigravity acts as the LLM)",
+      "reason": "No external LLM API key is configured. The agent system is designed to be model-agnostic; Antigravity can fulfill all agent roles directly.",
+      "impact": "Scripts remain functional for future live LLM execution. Memory.json updated directly by Antigravity as the doc-agent."
+    }
+  ]
+}

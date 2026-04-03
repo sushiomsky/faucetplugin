@@ -1,0 +1,197 @@
+name: AI Maintenance & Documentation Sync
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - '**.js'
+      - '**.json'
+      - '**.html'
+      - '**.css'
+  pull_request:
+    branches:
+      - main
+      - develop
+  schedule:
+    # Every Monday at 06:00 UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      task:
+        description: 'AI task to run'
+        required: true
+        default: 'update-docs'
+        type: choice
+        options:
+          - update-docs
+          - sync-readme-with-code
+          - improve-test-coverage
+          - refactor-dead-code
+          - validate-ci
+          - repo-analysis
+      dry_run:
+        description: 'Dry run (print prompt only, do not call LLM)'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Validate CI workflow files and manifest consistency (ops-agent)
+  # Runs on every push regardless of whether an LLM API key is configured.
+  # ─────────────────────────────────────────────────────────────────────────────
+  validate-manifest:
+    name: Validate Manifest & Version Sync
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check JSON syntax — manifest.json
+        run: python3 -m json.tool manifest.json > /dev/null && echo "✓ manifest.json is valid JSON"
+
+      - name: Check JSON syntax — version.json
+        run: python3 -m json.tool version.json > /dev/null && echo "✓ version.json is valid JSON"
+
+      - name: Verify version sync between manifest.json and version.json
+        run: |
+          MANIFEST_VER=$(python3 -c "import json; print(json.load(open('manifest.json'))['version'])")
+          VERSION_VER=$(python3 -c "import json; print(json.load(open('version.json'))['version'])")
+          echo "manifest.json version: ${MANIFEST_VER}"
+          echo "version.json version:  ${VERSION_VER}"
+          if [ "${MANIFEST_VER}" != "${VERSION_VER}" ]; then
+            echo "CRITICAL: Version mismatch! manifest.json=${MANIFEST_VER}, version.json=${VERSION_VER}"
+            exit 1
+          fi
+          echo "✓ Versions are in sync: ${MANIFEST_VER}"
+
+      - name: Verify all content_scripts files exist
+        run: |
+          python3 - <<'EOF'
+          import json, os, sys
+
+          with open('manifest.json') as f:
+              manifest = json.load(f)
+
+          errors = []
+          for cs_block in manifest.get('content_scripts', []):
+              for js_file in cs_block.get('js', []):
+                  if not os.path.isfile(js_file):
+                      errors.append(f"MISSING: {js_file} (referenced in content_scripts)")
+
+          for size_key, icon_path in manifest.get('icons', {}).items():
+              if not os.path.isfile(icon_path):
+                  errors.append(f"MISSING: {icon_path} (referenced in icons.{size_key})")
+
+          if errors:
+              for e in errors:
+                  print(e)
+              sys.exit(1)
+          else:
+              print(f"✓ All {len(manifest.get('content_scripts', [{}])[0].get('js', []))} content script files exist")
+              print("✓ All icon files referenced in manifest exist")
+          EOF
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # doc-agent: Audit documentation on pushes to main (requires LLM_API_KEY secret)
+  # Only runs if the LLM secret is configured. Produces a PR comment or artifact.
+  # ─────────────────────────────────────────────────────────────────────────────
+  doc-agent:
+    name: doc-agent — Documentation Audit
+    runs-on: ubuntu-latest
+    needs: validate-manifest
+    if: >
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'schedule') ||
+      (github.event_name == 'workflow_dispatch' && contains(fromJson('["update-docs","sync-readme-with-code","repo-analysis"]'), github.event.inputs.task))
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check for LLM API key
+        id: check_key
+        run: |
+          if [ -z "${{ secrets.LLM_API_KEY }}" ]; then
+            echo "has_key=false" >> "$GITHUB_OUTPUT"
+            echo "WARNING: LLM_API_KEY secret not configured. Running in dry-run mode."
+          else
+            echo "has_key=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run doc-agent (dry-run mode)
+        if: steps.check_key.outputs.has_key == 'false' || github.event.inputs.dry_run == 'true'
+        env:
+          AI_DRY_RUN: "1"
+          LLM_MODEL: "${{ vars.LLM_MODEL || 'gpt-4o' }}"
+          LLM_PROVIDER: "${{ vars.LLM_PROVIDER || 'openai' }}"
+          LLM_API_KEY: "dry-run-placeholder"
+        run: |
+          chmod +x .ai/run.sh
+          TASK="${{ github.event.inputs.task || 'update-docs' }}"
+          ./.ai/run.sh "${TASK}" --dry-run 2>&1
+
+      - name: Run doc-agent (live mode)
+        if: steps.check_key.outputs.has_key == 'true' && github.event.inputs.dry_run != 'true'
+        env:
+          LLM_API_KEY: "${{ secrets.LLM_API_KEY }}"
+          LLM_MODEL: "${{ vars.LLM_MODEL || 'gpt-4o' }}"
+          LLM_PROVIDER: "${{ vars.LLM_PROVIDER || 'openai' }}"
+        run: |
+          chmod +x .ai/run.sh
+          TASK="${{ github.event.inputs.task || 'update-docs' }}"
+          ./.ai/run.sh "${TASK}" 2>&1
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # test-agent: Coverage analysis on every PR
+  # Requires no LLM key — can run in dry-run by default.
+  # ─────────────────────────────────────────────────────────────────────────────
+  test-agent:
+    name: test-agent — Coverage Analysis
+    runs-on: ubuntu-latest
+    needs: validate-manifest
+    if: >
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.task == 'improve-test-coverage')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run test-agent (dry-run)
+        env:
+          AI_DRY_RUN: "1"
+          LLM_MODEL: "${{ vars.LLM_MODEL || 'gpt-4o' }}"
+          LLM_PROVIDER: "${{ vars.LLM_PROVIDER || 'openai' }}"
+          LLM_API_KEY: "dry-run-placeholder"
+        run: |
+          chmod +x .ai/run.sh
+          ./.ai/run.sh improve-test-coverage --dry-run 2>&1
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # dev-agent: Dry-run mode on PRs — never auto-applies changes
+  # ─────────────────────────────────────────────────────────────────────────────
+  dev-agent-dry-run:
+    name: dev-agent — PR Dry Run Analysis
+    runs-on: ubuntu-latest
+    needs: validate-manifest
+    if: >
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.task == 'refactor-dead-code')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run dev-agent in dry-run mode
+        env:
+          AI_DRY_RUN: "1"
+          LLM_API_KEY: "dry-run-placeholder"
+        run: |
+          chmod +x .ai/run.sh
+          ./.ai/run.sh refactor-dead-code --dry-run 2>&1
+          echo ""
+          echo "NOTE: dev-agent runs in DRY RUN only in CI."
+          echo "      Review the output above. Apply changes manually or via workflow_dispatch."
