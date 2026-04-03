@@ -1,6 +1,6 @@
 # Privacy Policy for Faucet Pro
 
-**Last Updated: April 1, 2026**
+**Last Updated: April 3, 2026**
 
 Faucet Pro ("we", "us", "our") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, and handle your information when you use our browser extension.
 
