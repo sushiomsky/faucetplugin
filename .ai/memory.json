@@ -11,7 +11,7 @@
 
   "repo_summary": {
     "name": "FaucetPick",
-    "version": "2.6.0",
+    "version": "2.7.0",
     "manifest_version": 3,
     "type": "Chrome Browser Extension (Manifest V3 — Service Worker based)",
     "language": "Vanilla JavaScript — no build step, no npm, no transpilation, no ES modules",
