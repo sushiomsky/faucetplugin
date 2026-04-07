@@ -9,30 +9,38 @@ async function main() {
     SiteSelectors.injectCustom(settings.customFaucets);
   }
 
-  await sleep(1000); // let page and JS frameworks settle
+  await sleep(1000); // 1s settling (Small Delays)
 
   // GUARD: do nothing if the user opened this page manually
-  console.log("[FaucetPlugin] Checking if this is a plugin tab...");
+  console.log("[FaucetPlugin] Verifying plugin-tab status...");
   const pluginTab = await isPluginTab();
+  
   if (!pluginTab) {
+    console.warn("[FaucetPlugin] ✘ Plugin Tab Verified: NO. Standing by (manual visit).");
     log("Not a plugin tab — standing by (manual visit)");
     return;
   }
   
-  console.log("[FaucetPlugin] ✓ This is a plugin-opened tab!");
+  console.log("[FaucetPlugin] ✓ Plugin Tab Verified: YES!");
 
   // DiceBet page: user navigated here from faucet page after claim
   if (isDicebetPage()) {
     log("Detected dicebet page");
     const config = await getDicebetConfig();
     log(`DiceBet config: enabled=${config.enabled}, strategy=${config.strategy}, side=${config.side}, chance=${config.chance}%, wd_threshold=${config.wdThreshold}`);
-    const shouldWithdraw = await runDicebet();
-    if (shouldWithdraw) {
-      log("DiceBet succeeded and balance reached threshold, proceeding to withdrawal");
-      sendDone(readBalance());
+    
+    // runDicebet returns true if current balance >= wdThreshold
+    const meetThreshold = await runDicebet();
+    const finalBalance = readBalance();
+
+    if (meetThreshold) {
+      log("DiceBet phase ended and balance reached threshold, proceeding to withdrawal integration");
     } else {
-      log("DiceBet failed or threshold not met");
+      log("DiceBet phase ended, threshold not met or balance zero");
     }
+
+    // Always inform background we are done with this cycle/phase
+    sendDone(finalBalance);
     return;
   }
 
@@ -88,7 +96,7 @@ async function main() {
 
 console.log("[FaucetPlugin] Content script executing for:", window.location.hostname);
 function handleMainError(err) {
-  console.error("[FaucetPlugin] Unhandled error:", err);
+  console.error("[FaucetPlugin] CRITICAL BOOTSTRAP ERROR:", err);
   log("Unhandled error:", err);
   sendError(String(err));
 }

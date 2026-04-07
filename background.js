@@ -63,6 +63,20 @@ function hostKey(url) {
 let checkLoopRunning = false;
 let pendingCheckRequested = false;
 let pendingForceAll = false;
+let isConfiguring = false;
+
+// Configuration Lock: Pauses all automated activity while the popup is open
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === "popup") {
+    isConfiguring = true;
+    console.log("[Faucet] Configuration Lock ACTIVE (Popup Open)");
+    port.onDisconnect.addListener(() => {
+      isConfiguring = false;
+      console.log("[Faucet] Configuration Lock RELEASED (Popup Closed) - Resuming...");
+      requestCheckAndRun(false); // Immediate resume
+    });
+  }
+});
 
 async function requestCheckAndRun(forceAll = false) {
   pendingCheckRequested = true;
@@ -99,14 +113,39 @@ async function ensureTickAlarm() {
 
 async function cancelAlarm() {
   await chrome.alarms.clear(ALARM_NAME);
-  console.log("[Faucet] Alarm cancelled");
+  log("[Faucet] Alarm cancelled");
+}
+
+async function stopAllActivity() {
+  await cancelAlarm();
+  const { activeTabs = {}, settings = {} } = await chrome.storage.local.get(["activeTabs", "settings"]);
+  
+  // Close all active faucet tabs
+  for (const tabId of Object.keys(activeTabs)) {
+    try { await chrome.tabs.remove(parseInt(tabId, 10)); } catch (err) {}
+  }
+
+  // Clear all runtime state
+  await chrome.storage.local.set({
+    activeTabs: {},
+    claimQueue: [],
+    running: false,
+    settings: { ...settings, enabled: false }
+  });
+  
+  log("[Faucet] ALL ACTIVITY STOPPED immediately.");
 }
 
 // ── Check & open due faucets ─────────────────────────────────────────────────
 // activeTabs = { [tabId]: { faucetUrl, phase, wdAddress? } }
 
 async function checkAndRun(forceAll = false) {
-  const s = await getSettings();
+  if (isConfiguring && !forceAll) {
+    console.log("[Faucet] Skipping automated check: Configuration in progress...");
+    return; 
+  }
+  
+  if (forceAll) console.log("[Manual] Bypassing Configuration Lock for user request");
   if (!s.enabled) {
     console.log("[Faucet] Plugin disabled");
     await chrome.storage.local.set({ running: false });
@@ -384,59 +423,61 @@ async function dispatchNativeClick(tabId, x, y) {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
-  // Sync: focus-tab (called when content script is waiting for Turnstile)
+  // Sync: focus-tab
   if (msg.type === "focus-tab") {
     if (sender.tab?.id) chrome.tabs.update(sender.tab.id, { active: true });
     return;
   }
 
-  // Async: native click via DevTools protocol (trusted mouse event path)
-  if (msg.type === "native-click") {
-    const tabId = sender.tab?.id;
-    if (!tabId) {
-      sendResponse({ ok: false, error: "no-tab" });
-      return;
+  // Handle async messages separately to avoid lint errors
+  (async () => {
+    try {
+      // Sync: check-plugin-tab
+      if (msg.type === "check-plugin-tab") {
+        const { activeTabs = {} } = await chrome.storage.local.get("activeTabs");
+        const isManual = sender.tab?.url && (sender.tab.url.includes("#manual") || sender.tab.url.includes("manualMode=true"));
+        const isReady = isManual || (!!sender.tab && !!activeTabs[sender.tab.id]);
+        sendResponse({ yes: isReady });
+        return;
+      }
+
+      // Sync: get-withdraw-info
+      if (msg.type === "get-withdraw-info") {
+        const d = await chrome.storage.local.get("activeTabs");
+        const tab = (d.activeTabs || {})[sender.tab?.id];
+        sendResponse({ isWithdrawTab: tab?.phase === "withdraw", address: tab?.wdAddress || "" });
+        return;
+      }
+
+      // Sync: get-tab-state
+      if (msg.type === "get-tab-state") {
+        const d = await chrome.storage.local.get("activeTabs");
+        const tab = (d.activeTabs || {})[sender.tab?.id];
+        sendResponse({ tabState: tab || null });
+        return;
+      }
+
+      // Async: native-click
+      if (msg.type === "native-click") {
+        const tabId = sender.tab?.id;
+        if (!tabId) {
+          sendResponse({ ok: false, error: "no-tab" });
+          return;
+        }
+        chrome.tabs.update(tabId, { active: true }).catch(() => {});
+        await dispatchNativeClick(tabId, msg.x, msg.y);
+        sendResponse({ ok: true });
+        return;
+      }
+
+      // Default async handler
+      await handleMessage(msg, sender);
+    } catch (err) {
+      console.error("[Faucet:BG Message Error]", err);
     }
+  })();
 
-    chrome.tabs.update(tabId, { active: true }).catch(() => {});
-    dispatchNativeClick(tabId, msg.x, msg.y)
-      .then(() => sendResponse({ ok: true }))
-      .catch(err => {
-        console.error("[Faucet] Native click failed:", err?.message || err);
-        sendResponse({ ok: false, error: err?.message || String(err) });
-      });
-    return true;
-  }
-
-  // Sync: check-plugin-tab
-  if (msg.type === "check-plugin-tab") {
-    chrome.storage.local.get("activeTabs").then(d => {
-      const activeTabs = d.activeTabs || {};
-      sendResponse({ yes: sender.tab?.id in activeTabs });
-    });
-    return true;
-  }
-
-  // Sync: get-withdraw-info
-  if (msg.type === "get-withdraw-info") {
-    chrome.storage.local.get("activeTabs").then(d => {
-      const tab = (d.activeTabs || {})[sender.tab?.id];
-      sendResponse({ isWithdrawTab: tab?.phase === "withdraw", address: tab?.wdAddress || "" });
-    });
-    return true;
-  }
-
-  // Sync: get-tab-state
-  if (msg.type === "get-tab-state") {
-    chrome.storage.local.get("activeTabs").then(d => {
-      const tab = (d.activeTabs || {})[sender.tab?.id];
-      sendResponse({ tabState: tab || null });
-    });
-    return true;
-  }
-
-  // Async
-  handleMessage(msg, sender);
+  return true; // Keep channel open for async sendResponse
 });
 
 
@@ -580,8 +621,34 @@ async function handleMessage(msg, sender) {
       ensureTickAlarm();
       requestCheckAndRun();
     }
-    else { cancelAlarm(); await chrome.storage.local.set({ running: false }); }
+    else { 
+      await stopAllActivity(); // Use the new comprehensive stop
+    }
     log("[Faucet] Settings saved");
+    return;
+  }
+
+  if (msg.type === "stop-all-activity") {
+    await stopAllActivity();
+    return;
+  }
+
+  if (msg.type === "manual-dice-run") {
+    const s = await getSettings();
+    const faucet = s.faucets.find(f => f.active !== false) || s.faucets[0];
+    const diceUrl = `${faucet.url.replace(/\/$/, "")}/dice.php#manual`; // Append #manual token
+    
+    const tab = await chrome.tabs.create({ url: diceUrl, active: true });
+    const { activeTabs = {} } = await chrome.storage.local.get("activeTabs");
+    activeTabs[tab.id] = {
+      faucetUrl: faucet.url,
+      phase: "dice",
+      manualMode: true, // NEW: Ensures the tab doesn't close automatically
+      startedAt: Date.now(),
+      phaseStartedAt: Date.now()
+    };
+    await chrome.storage.local.set({ activeTabs });
+    log(`[Faucet] Manual dice run started for ${faucet.label}`);
     return;
   }
 
@@ -620,49 +687,47 @@ async function handleMessage(msg, sender) {
 
   // ── faucet-done / faucet-error ────────────────────────────────────────────
   if (msg.type === "faucet-done" || msg.type === "faucet-error") {
-    log("[Faucet]", tabData.faucetUrl, msg.type, msg.reason || "");
-    await appendLog({ url: tabData.faucetUrl, status: msg.type === "faucet-done" ? "ok" : "error", reason: msg.reason, balance: msg.balance, ts: Date.now() });
+    if (msg.type === "faucet-error") {
+      log("[Faucet]", tabData.faucetUrl, "error:", msg.reason || "unknown");
+      await appendLog({ url: tabData.faucetUrl, status: "error", reason: msg.reason, balance: msg.balance, ts: Date.now() });
+    } else {
+      log("[Faucet]", tabData.faucetUrl, "done.", "Balance:", msg.balance);
+      await appendLog({ url: tabData.faucetUrl, status: "ok", reason: msg.reason, balance: msg.balance, ts: Date.now() });
 
-    if (msg.type === "faucet-done") {
       const { claimCounts = {} } = await chrome.storage.local.get("claimCounts");
       claimCounts[tabData.faucetUrl] = (claimCounts[tabData.faucetUrl] || 0) + 1;
       await chrome.storage.local.set({ claimCounts });
-    }
 
-    if (msg.type === "faucet-done" && msg.balance != null && cfg) {
-      // If dicebet was enabled, the balance already met wdThreshold in content.js
-      // So we should proceed with withdrawal regardless of wdThreshold
-      const isDicebetCompleted = cfg.dbEnabled === true;
-      
-      if (isDicebetCompleted) {
-        // Dicebet was enabled and succeeded, proceed to withdrawal
-        if (cfg.wdEnabled && cfg.wdAddress) {
-          activeTabs[tabId] = { ...tabData, phase: "withdraw", wdAddress: cfg.wdAddress, phaseStartedAt: Date.now() };
-          await chrome.storage.local.set({ activeTabs });
-          chrome.tabs.update(tabId, { url: getWithdrawUrl(cfg) });
-          return;
-        }
-      } else {
-        // Dicebet disabled, check regular withdrawal threshold
-        const threshold = parseFloat(cfg.wdThreshold);
-        if (!isNaN(threshold) && threshold > 0) {
-          if (cfg.wdEnabled && cfg.wdAddress && msg.balance >= threshold) {
-            // → withdraw
-            activeTabs[tabId] = { ...tabData, phase: "withdraw", wdAddress: cfg.wdAddress, phaseStartedAt: Date.now() };
-            await chrome.storage.local.set({ activeTabs });
-            chrome.tabs.update(tabId, { url: getWithdrawUrl(cfg) });
-            return;
-          }
-        }
+      // Unified Withdrawal Threshold Check (Dice or Standard)
+      const threshold = parseFloat(cfg?.wdThreshold);
+      const isAboveThreshold = !isNaN(threshold) && threshold > 0 && msg.balance >= threshold;
+
+      if (cfg?.wdEnabled && cfg?.wdAddress && isAboveThreshold) {
+        log(`[Faucet] Above Threshold (${threshold}). Moving to withdrawal.`);
+        activeTabs[tabId] = { ...tabData, phase: "withdraw", wdAddress: cfg.wdAddress, phaseStartedAt: Date.now() };
+        await chrome.storage.local.set({ activeTabs });
+        chrome.tabs.update(tabId, { url: getWithdrawUrl(cfg) });
+        return;
       }
     }
 
     if (cfg) claimHistory[cfg.url] = Date.now();
     await chrome.storage.local.set({ claimHistory });
+
+    // Check for manualMode flag OR #manual hash in the tab URL
+    const isManualTab = tabData.manualMode || (sender.tab?.url && sender.tab.url.includes("#manual"));
+    
+    if (isManualTab) {
+      log("[Faucet] Manual session complete (#manual). Keeping tab open for user.");
+      delete activeTabs[tabId];
+      await chrome.storage.local.set({ activeTabs });
+      return;
+    }
+
     await closeTab(tabId);
     
     // Check for next due faucet in queue
-    console.log("[Faucet] Faucet claim complete, checking for next in queue");
+    log("[Faucet] Site cycle complete, checking queue...");
     await requestCheckAndRun();
     return;
   }

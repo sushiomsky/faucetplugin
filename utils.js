@@ -25,7 +25,7 @@ window.RANDOM_14_STATE_STORAGE_KEY = "diceRandom14State";
 window.lastNativeClickAt = 0;
 window.lastPhaseHeartbeatAt = 0;
 
-window.DEBUG = false; // Set to true for development
+window.DEBUG = true; 
 function log(...a) {
   if (window.DEBUG) {
     console.log("[FaucetPick]", ...a);
@@ -95,18 +95,13 @@ function sendPhaseHeartbeat(detail = "") {
 }
 
 function isPluginTab() {
+  if (location.hash === "#manual") return Promise.resolve(true);
+  
   return new Promise(resolve => {
-    let attempts = 0;
-    function attempt() {
-      chrome.runtime.sendMessage({ type: "check-plugin-tab" }, (resp) => {
-        if (chrome.runtime.lastError) { resolve(false); return; }
-        if (resp?.yes === true) { resolve(true); return; }
-        attempts++;
-        if (attempts < 6) setTimeout(attempt, 500);
-        else resolve(false);
-      });
-    }
-    attempt();
+    chrome.runtime.sendMessage({ type: "check-plugin-tab" }, (resp) => {
+      if (chrome.runtime.lastError) { resolve(false); return; }
+      resolve(resp?.yes === true);
+    });
   });
 }
 

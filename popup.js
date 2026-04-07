@@ -5,7 +5,10 @@ document.querySelectorAll(".nav-item").forEach(item => {
     document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
     item.classList.add("active");
     const target = document.getElementById("tab-" + item.dataset.tab);
-    if (target) target.classList.add("active");
+    if (target) {
+      target.classList.add("active");
+      chrome.storage.local.set({ lastTab: item.dataset.tab });
+    }
   });
 });
 
@@ -25,6 +28,18 @@ let currentFaucets = [];
 let selectedFaucetIndex = 0;
 let cryptoPrices = {};
 let minWdThresholds = {};
+let autoSaveTimeout = null;
+let saveIndicatorTimeout = null;
+
+function triggerAutoSave(debounceMs = 1000) {
+  if (autoSaveTimeout) clearTimeout(autoSaveTimeout);
+  autoSaveTimeout = setTimeout(async () => {
+    if (typeof saveBtn !== "undefined") {
+      await saveBtn.onclick();
+    }
+    autoSaveTimeout = null;
+  }, debounceMs);
+}
 
 // ── UI Elements ──────────────────────────────────────────────────────────────
 const dashboardGrid = document.getElementById("dashboardGrid");
@@ -36,6 +51,7 @@ const protocolStatusEl = document.getElementById("protocolStatus");
 const headerStatusText = document.getElementById("headerStatusText");
 const botNameEl = document.getElementById("botName");
 const runBtn = document.getElementById("runBtn");
+const betBtn = document.getElementById("betBtn");
 const stopBtn = document.getElementById("stopBtn");
 const saveBtn = document.getElementById("saveBtn");
 const saveMsg = document.getElementById("saveMsg");
@@ -123,6 +139,11 @@ async function refreshStatus() {
     dashboardGrid.appendChild(card);
   });
 
+  // 4. Action Buttons Visibility
+  runBtn.style.display = "block";
+  betBtn.style.display = "block";
+  stopBtn.style.display = enabled ? "block" : "none";
+
   // 5. Faucets Panel
   sitesListContainer.innerHTML = "";
   faucets.forEach((f, i) => {
@@ -152,7 +173,8 @@ async function refreshStatus() {
   renderHistory(log);
 
   // 7. Buttons
-  runBtn.disabled = !enabled || activeList.length > 0;
+  runBtn.disabled = false; 
+  betBtn.disabled = false;
   runBtn.style.display = activeList.length > 0 ? "none" : "flex";
   stopBtn.style.display = activeList.length > 0 ? "flex" : "none";
 }
@@ -179,10 +201,14 @@ function renderHistory(log) {
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 async function loadSettings() {
-  const stored = await chrome.storage.local.get(["settings", "minWdThresholds"]);
+  const stored = await chrome.storage.local.get(["settings", "minWdThresholds", "lastTab"]);
   const s = stored.settings || {};
   minWdThresholds = stored.minWdThresholds || {};
   
+  const currentTab = stored.lastTab || "dashboard";
+  const navItem = document.querySelector(`.nav-item[data-tab="${currentTab}"]`);
+  if (navItem) navItem.click();
+
   document.getElementById("cfgEnabled").checked = s.enabled !== false;
   document.getElementById("cfgBotName").value = s.botName === "Faucet Bot" ? "" : (s.botName || "");
   if (botNameEl) botNameEl.textContent = s.botName || "Welcome Back!";
@@ -206,14 +232,18 @@ async function loadSettings() {
   currentFaucets = await Promise.all(allBaseFaucets.map(async def => {
     const merged = { ...def, ...(storedByUrl[def.url] || {}) };
     let dUser = merged.username || "", dPass = merged.password || "";
-    if (typeof CryptoUtils !== "undefined") {
+    if (typeof CryptoUtils !== "undefined" && dUser && dUser.length > 30) {
       dUser = await CryptoUtils.decrypt(dUser);
       dPass = await CryptoUtils.decrypt(dPass);
     }
     return { ...merged, username: dUser, password: dPass };
   }));
 
-  renderConfigForSite(selectedFaucetIndex);
+  // Attach global auto-save listeners
+  document.querySelectorAll("#tab-settings input, #tab-settings select").forEach(el => {
+    const event = (el.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input';
+    el.addEventListener(event, () => triggerAutoSave(el.type === 'checkbox' ? 0 : 1000));
+  });
 }
 
 function renderConfigForSite(index) {
@@ -244,7 +274,62 @@ function renderConfigForSite(index) {
         <input type="number" id="frmax" value="${f.maxRandomMinutes || 5}" min="0">
       </div>
     </div>
-    <hr style="border:none; border-top:1px solid var(--glass-border); margin:10px 0;">
+
+    <div class="group-header" style="margin-top:15px; border-top:1px solid var(--glass-border); padding-top:10px;"><span>🎲</span> Dice Betting</div>
+    <div class="toggle-switch" style="margin-bottom:10px;">
+       <span class="label">Enable Dice Strategy</span>
+       <input type="checkbox" id="fdb" ${f.dbEnabled ? "checked" : ""}>
+    </div>
+    
+    <div id="diceSettings" style="display:${f.dbEnabled ? 'block' : 'none'};">
+      <div class="field">
+        <label class="label">Strategy</label>
+        <select id="fdbStrategy" style="width:100%; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:#fff; padding:8px; border-radius:8px;">
+          <option value="${DICE_STRATEGY_ALL_IN_001}" ${f.dbStrategy === DICE_STRATEGY_ALL_IN_001 ? "selected" : ""}>All-In (Target Threshold)</option>
+          <option value="${DICE_STRATEGY_COMBINED_HIGH_ROLLER}" ${f.dbStrategy === DICE_STRATEGY_COMBINED_HIGH_ROLLER ? "selected" : ""}>Combined High Roller</option>
+          <option value="${DICE_STRATEGY_PYRAMID}" ${f.dbStrategy === DICE_STRATEGY_PYRAMID ? "selected" : ""}>Win-Streak Pyramid</option>
+        </select>
+      </div>
+
+      <div id="pyramidConfig" style="display:${f.dbStrategy === DICE_STRATEGY_PYRAMID ? 'block' : 'none'}; margin-top:10px; background:rgba(255,255,255,0.02); padding:10px; border-radius:10px; border:1px solid var(--glass-border);">
+        <div style="display:flex; gap:10px;">
+          <div class="field" style="flex:1">
+            <label class="label">Base Bet %</label>
+            <input type="number" id="pyrBase" value="${f.dbPyramidConfig?.base_bet_pct || 0.05}" step="any">
+          </div>
+          <div class="field" style="flex:1">
+            <label class="label">Multiplier</label>
+            <input type="number" id="pyrMult" value="${f.dbPyramidConfig?.multiplier || 2.0}" step="any">
+          </div>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <div class="field" style="flex:1">
+            <label class="label">Max Level</label>
+            <input type="number" id="pyrMax" value="${f.dbPyramidConfig?.max_level || 5}">
+          </div>
+          <div class="field" style="flex:1">
+            <label class="label">Drop Level</label>
+            <input type="number" id="pyrDrop" value="${f.dbPyramidConfig?.drop_levels || 2}">
+          </div>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <div class="field" style="flex:1">
+            <label class="label">Target Profit %</label>
+            <input type="number" id="pyrTP" value="${f.dbPyramidConfig?.target_profit_pct || 10}" step="any">
+          </div>
+          <div class="field" style="flex:1">
+            <label class="label">Stop Loss %</label>
+            <input type="number" id="pyrSL" value="${f.dbPyramidConfig?.max_loss_pct || 20}" step="any">
+          </div>
+        </div>
+        <div class="toggle-switch">
+          <span class="label">Switch Side on Loss</span>
+          <input type="checkbox" id="pyrSwitch" ${f.dbPyramidConfig?.switch_on_loss !== false ? "checked" : ""}>
+        </div>
+      </div>
+    </div>
+
+    <div class="group-header" style="margin-top:15px; border-top:1px solid var(--glass-border); padding-top:10px;"><span>💰</span> Withdrawal</div>
     <div class="toggle-switch" style="margin-bottom:10px;">
        <span class="label">Auto-Withdrawal</span>
        <input type="checkbox" id="fwd" ${f.wdEnabled ? "checked" : ""}>
@@ -255,7 +340,7 @@ function renderConfigForSite(index) {
       ${minThreshold ? `<span style="font-size:9px; color:var(--accent);">Minimum: ${minThreshold}</span>` : ""}
     </div>
     <div class="field">
-      <label class="label">Wallet / Payout Address</label>
+      <label class="label">Wallet Address</label>
       <input type="text" id="fwdaddr" value="${f.wdAddress || ""}" placeholder="Enter your address">
     </div>
     <div style="margin-top:15px;">
@@ -263,19 +348,48 @@ function renderConfigForSite(index) {
     </div>
   `;
 
+  const dSettings = card.querySelector("#diceSettings");
+  const pConfig = card.querySelector("#pyramidConfig");
+
+  card.querySelector("#fdb").addEventListener("change", (e) => {
+    dSettings.style.display = e.target.checked ? "block" : "none";
+    f.dbEnabled = e.target.checked;
+  });
+
+  card.querySelector("#fdbStrategy").addEventListener("change", (e) => {
+    pConfig.style.display = e.target.value === DICE_STRATEGY_PYRAMID ? "block" : "none";
+    f.dbStrategy = e.target.value;
+  });
+
   card.querySelector("#openSiteBtn").addEventListener("click", () => {
     const refUrl = f.referralId ? `${f.url.replace(/\/$/, '')}/signup.php?ref=${f.referralId}` : f.url;
     window.open(refUrl, "_blank");
   });
 
-  card.querySelectorAll("input").forEach(el => {
-    el.addEventListener("input", () => {
+  card.querySelectorAll("input, select").forEach(el => {
+    const event = (el.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input';
+    el.addEventListener(event, () => {
       f.intervalMinutes = parseInt(card.querySelector("#fint").value) || 61;
       f.minRandomMinutes = parseInt(card.querySelector("#frmin").value) || 0;
       f.maxRandomMinutes = parseInt(card.querySelector("#frmax").value) || 5;
+      
+      f.dbEnabled = card.querySelector("#fdb").checked;
+      f.dbStrategy = card.querySelector("#fdbStrategy").value;
+      
+      if (!f.dbPyramidConfig) f.dbPyramidConfig = {};
+      f.dbPyramidConfig.base_bet_pct = parseFloat(card.querySelector("#pyrBase").value);
+      f.dbPyramidConfig.multiplier = parseFloat(card.querySelector("#pyrMult").value);
+      f.dbPyramidConfig.max_level = parseInt(card.querySelector("#pyrMax").value);
+      f.dbPyramidConfig.drop_levels = parseInt(card.querySelector("#pyrDrop").value);
+      f.dbPyramidConfig.target_profit_pct = parseFloat(card.querySelector("#pyrTP").value);
+      f.dbPyramidConfig.max_loss_pct = parseFloat(card.querySelector("#pyrSL").value);
+      f.dbPyramidConfig.switch_on_loss = card.querySelector("#pyrSwitch").checked;
+
       f.wdEnabled = card.querySelector("#fwd").checked;
       f.wdThreshold = card.querySelector("#fwdth").value.trim();
       f.wdAddress = card.querySelector("#fwdaddr").value.trim();
+
+      triggerAutoSave(el.type === 'checkbox' ? 0 : 1000);
     });
   });
 }
@@ -322,12 +436,33 @@ saveBtn.onclick = async () => {
   };
 
   chrome.runtime.sendMessage({ type: "save-settings", settings });
-  saveMsg.className = "save-indicator show";
-  setTimeout(() => { saveMsg.className = "save-indicator"; }, 2000);
+  
+  if (saveIndicatorTimeout) clearTimeout(saveIndicatorTimeout);
+  saveMsg.textContent = "✓ Changes Saved";
+  saveMsg.classList.add("show");
+  saveIndicatorTimeout = setTimeout(() => {
+    saveMsg.classList.remove("show");
+    saveIndicatorTimeout = null;
+  }, 1500);
 };
 
 runBtn.onclick = () => chrome.runtime.sendMessage({ type: "manual-run" });
-stopBtn.onclick = () => chrome.runtime.sendMessage({ type: "save-settings", settings: { enabled: false } });
+
+betBtn.onclick = async () => {
+  try {
+    await chrome.runtime.sendMessage({ type: "manual-dice-run" });
+    window.close(); // Close only after message is accepted
+  } catch (err) {
+    console.error("[Popup] Send failed:", err);
+    // Fallback if message fails
+    chrome.runtime.sendMessage({ type: "manual-dice-run" });
+    setTimeout(() => window.close(), 100);
+  }
+};
+
+stopBtn.onclick = () => {
+  chrome.runtime.sendMessage({ type: "stop-all-activity" });
+};
 
 (async () => {
   const { setupComplete } = await chrome.storage.local.get("setupComplete");
@@ -338,4 +473,7 @@ stopBtn.onclick = () => chrome.runtime.sendMessage({ type: "save-settings", sett
   await loadSettings();
   await refreshStatus();
   setInterval(refreshStatus, 1000);
+  
+  // Heartbeat: Signal to background that configuration is active
+  try { chrome.runtime.connect({ name: "popup" }); } catch (err) {}
 })();

@@ -259,5 +259,28 @@ input:focus { border-color: var(--accent); outline: none; }
   border-top: 1px solid var(--glass-border);
 }
 
-.save-indicator { position: absolute; bottom: 84px; left: 50%; transform: translateX(-50%); background: var(--status-ok); color: #000; padding: 6px 16px; border-radius: 20px; font-size: 11px; font-weight: 700; opacity: 0; pointer-events: none; transition: 0.4s; z-index: 3000; }
-.save-indicator.show { opacity: 1; transform: translateX(-50%) translateY(-10px); }
+.save-indicator {
+  position: absolute;
+  bottom: 84px;
+  left: 50%;
+  transform: translateX(-50%) translateY(10px);
+  background: rgba(0, 255, 136, 0.9);
+  backdrop-filter: blur(8px);
+  color: #000;
+  padding: 8px 20px;
+  border-radius: 30px;
+  font-size: 11px;
+  font-weight: 800;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  z-index: 3000;
+  box-shadow: 0 10px 20px rgba(0, 255, 136, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.save-indicator.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}

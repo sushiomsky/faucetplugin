@@ -6,6 +6,7 @@
 // ── Dice strategy identifiers ─────────────────────────────────────────────────
 const DICE_STRATEGY_ALL_IN_001             = "all-in-0.1";
 const DICE_STRATEGY_COMBINED_HIGH_ROLLER   = "combined-high-roller";
+const DICE_STRATEGY_PYRAMID                = "win-streak-pyramid";
 const DEFAULT_DB_STRATEGY                  = DICE_STRATEGY_ALL_IN_001;
 const DEFAULT_DB_SIDE                      = "higher";
 const DEFAULT_DB_CHANCE                    = "1";
@@ -44,6 +45,14 @@ const DEFAULT_HIGH_ROLLER_CONFIG = Object.freeze({
   volatility_trigger: 4
 });
 
+const DEFAULT_PYRAMID_CONFIG = Object.freeze({
+  base_bet_pct:      0.05, // 0.05%
+  multiplier:        2.0,
+  max_level:         5,
+  drop_levels:       2,
+  switch_on_loss:    true
+});
+
 // ── Anti-Detection & Timing Defaults ─────────────────────────────────────────
 const DEFAULT_LONG_BREAK_ENABLED   = false;
 const DEFAULT_LONG_BREAK_FREQUENCY = 5; // Every 5 claims
@@ -80,6 +89,7 @@ function normalizeDbStrategy(rawStrategy, dbEnabled = false) {
   const normalized = String(rawStrategy || "").toLowerCase();
   if (normalized === DICE_STRATEGY_ALL_IN_001) return DICE_STRATEGY_ALL_IN_001;
   if (normalized === DICE_STRATEGY_COMBINED_HIGH_ROLLER) return DICE_STRATEGY_COMBINED_HIGH_ROLLER;
+  if (normalized === DICE_STRATEGY_PYRAMID) return DICE_STRATEGY_PYRAMID;
   return DEFAULT_DB_STRATEGY;
 }
 
@@ -94,6 +104,10 @@ function normalizeDbChance(rawChance, dbStrategy) {
 
 function getDefaultHighRollerConfig() {
   return { ...DEFAULT_HIGH_ROLLER_CONFIG };
+}
+
+function getDefaultPyramidConfig() {
+  return normalizePyramidConfig(DEFAULT_PYRAMID_CONFIG);
 }
 
 // Returns the per-host default WD threshold string for a faucet URL.
@@ -145,15 +159,39 @@ function normalizeHighRollerConfig(rawConfig = {}) {
   return { base_bet_fraction, max_bet_fraction, max_ladder_depth, history_window, streak_trigger, volatility_trigger };
 }
 
+// Validates and clamps every field of a pyramid strategy config object.
+function normalizePyramidConfig(rawConfig = {}) {
+  const cfg = rawConfig && typeof rawConfig === "object" ? rawConfig : {};
+  const base_bet_pct = clampNumber(
+    toFiniteNumber(cfg.base_bet_pct, DEFAULT_PYRAMID_CONFIG.base_bet_pct),
+    0.00001, 50
+  );
+  const multiplier = clampNumber(
+    toFiniteNumber(cfg.multiplier, DEFAULT_PYRAMID_CONFIG.multiplier),
+    1.01, 10
+  );
+  const max_level = clampNumber(
+    Math.round(toFiniteNumber(cfg.max_level, DEFAULT_PYRAMID_CONFIG.max_level)),
+    1, 20
+  );
+  const drop_levels = clampNumber(
+    Math.round(toFiniteNumber(cfg.drop_levels, DEFAULT_PYRAMID_CONFIG.drop_levels)),
+    1, max_level
+  );
+  const switch_on_loss = cfg.switch_on_loss !== false;
+  
+  return { base_bet_pct, multiplier, max_level, drop_levels, switch_on_loss };
+}
+
 // ── Default faucet list (single source of truth) ──────────────────────────────
 // background.js and popup.js both use this to initialise / reset settings.
 function makeFaucetDefaults() {
   return [
-    { url: "https://litepick.io/",    coin: "LTC",  label: "litepick",  active: false, referralId: "frankgoosen",    intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: "0.05",   wdAddress: "", dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-    { url: "https://dogepick.io/",    coin: "DOGE", label: "dogepick",  active: false, referralId: "schnickfitzel2", intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: "30",     wdAddress: "", dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-    { url: "https://solpick.io/",     coin: "SOL",  label: "solpick",   active: false, referralId: "tstehg",         intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: "0.0325", wdAddress: "", dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-    { url: "https://bnbpick.io/",     coin: "BNB",  label: "bnbpick",   active: false, referralId: "schnickfitzel",   intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: "0.009",  wdAddress: "", dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-    { url: "https://tronpick.io/",    coin: "TRX",  label: "tronpick",  active: false, referralId: "schnickfitzel",   intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: "40",     wdAddress: "", dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() },
-    { url: "https://polpick.io/",     coin: "POL",  label: "polpick",   active: false, referralId: "schnickfitzel",   intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: "10",     wdAddress: "", dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig() }
+    { url: "https://litepick.io/",    coin: "LTC",  label: "litepick",  active: false, referralId: "frankgoosen",    intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: "0.05",   wdAddress: "", dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig(), dbPyramidConfig: getDefaultPyramidConfig() },
+    { url: "https://dogepick.io/",    coin: "DOGE", label: "dogepick",  active: false, referralId: "schnickfitzel2", intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: "30",     wdAddress: "", dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig(), dbPyramidConfig: getDefaultPyramidConfig() },
+    { url: "https://solpick.io/",     coin: "SOL",  label: "solpick",   active: false, referralId: "tstehg",         intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: "0.0325", wdAddress: "", dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig(), dbPyramidConfig: getDefaultPyramidConfig() },
+    { url: "https://bnbpick.io/",     coin: "BNB",  label: "bnbpick",   active: false, referralId: "schnickfitzel",   intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: "0.009",  wdAddress: "", dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig(), dbPyramidConfig: getDefaultPyramidConfig() },
+    { url: "https://tronpick.io/",    coin: "TRX",  label: "tronpick",  active: false, referralId: "schnickfitzel",   intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: "40",     wdAddress: "", dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig(), dbPyramidConfig: getDefaultPyramidConfig() },
+    { url: "https://polpick.io/",     coin: "POL",  label: "polpick",   active: false, referralId: "schnickfitzel",   intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: "10",     wdAddress: "", dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig(), dbPyramidConfig: getDefaultPyramidConfig() }
   ];
 }

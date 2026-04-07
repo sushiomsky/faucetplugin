@@ -1,5 +1,5 @@
 {
-  "version": "2.7.0",
-  "download_url": "https://github.com/sushiomsky/faucetplugin/raw/main/faucet-pro-v2.7.zip",
-  "changelog": "v2.7.0 — Premium Onboarding & Rebranding. Finalized the FaucetPick rebranding, implemented a mandatory onboarding setup wizard, and optimized the dashboard for a premium user experience."
+  "version": "2.7.2",
+  "download_url": "https://github.com/sushiomsky/faucetplugin/raw/main/faucet-pro-v2.7.2.zip",
+  "changelog": "v2.7.2 — Stabilization & Manual Override Hardening. Resolved race conditions in manual betting, implemented a 20ms human-like typing delay to bypass bot detection, and added a configuration lock to pause automation while settings are open."
 }

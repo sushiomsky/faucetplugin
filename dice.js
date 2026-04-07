@@ -1,42 +1,158 @@
 // ── dice.js ─────────────────────────────────────────────────────────────
 
-function normalizeDiceChance(rawChance, dbStrategy) {
-  const parsed = parseFloat(rawChance);
-  if (!Number.isFinite(parsed)) {
-    return dbStrategy === DICE_STRATEGY_ALL_IN_001 ? window.DEFAULT_ALL_IN_CHANCE_PERCENT : 48.5;
-  }
-  return clampNumber(parsed, 0.01, 99);
-}
-
-async function loadRandom14Schedule(hostname) {
-  const hostKey = normalizeHost(hostname || location.hostname);
-  const stored = await chrome.storage.local.get(window.RANDOM_14_STATE_STORAGE_KEY);
-  const allState = stored?.[window.RANDOM_14_STATE_STORAGE_KEY];
-  const hostState = allState && typeof allState === "object" ? allState[hostKey] : null;
-
-  const settledBetCount = Math.max(0, Math.round(Number(hostState?.settledBetCount) || 0));
-  const parsedNext = Number(hostState?.nextRandom14BetAt);
-  let nextRandom14BetAt = Number.isFinite(parsedNext) && parsedNext > 0
-    ? Math.max(1, Math.round(parsedNext))
-    : 0;
-  if (nextRandom14BetAt <= settledBetCount) {
-    nextRandom14BetAt = settledBetCount + randomIntInclusive(window.RANDOM_14_MIN_BET_INTERVAL, window.RANDOM_14_MAX_BET_INTERVAL);
+/**
+ * DiceAPI
+ * Reliable interaction with the faucet game UI.
+ */
+class DiceAPI {
+  constructor(logger = log) {
+    this.logger = logger;
   }
 
-  return { hostKey, settledBetCount, nextRandom14BetAt };
+  async getBalance(retries = 3) {
+    return await readDicebetBalanceWithRetries(retries, 800);
+  }
+
+  async setBetAmount(amount) {
+    const input = findDicebetAmountInput();
+    if (!input) throw new Error("amount-input-not-found");
+    await setDicebetInputValue(input, amount.toFixed(8));
+    // Trigger site-specific update logic
+    if (typeof window.set_bet_amount === "function") window.set_bet_amount();
+    if (typeof window.change_bet_amount === "function") window.change_bet_amount();
+  }
+
+  async setChance(chance) {
+    const input = findDicebetChanceInput();
+    if (!input) throw new Error("chance-input-not-found");
+    await setDicebetInputValue(input, chance.toFixed(2));
+    if (typeof window.change_win_chance === "function") window.change_win_chance();
+    if (typeof window.change_win_chance2 === "function") window.change_win_chance2(chance);
+  }
+
+  async setSide(side) {
+    const normalized = normalizeDiceSide(side);
+    applyDicebetSide(normalized);
+  }
+
+  async roll() {
+    const ready = await waitForDicebetIdle(10000);
+    if (!ready) {
+      log("[Dice] Engine stuck — initiating Focus Reset");
+      document.body.click(); // Click background to reset site focus
+      await sleep(500);
+    }
+    
+    // Turbo Buffer: Let the site's JS process the amount change
+    await sleep(300); 
+
+    const started = placeDicebetRound();
+    if (!started) throw new Error("roll-failed-to-start");
+    
+    this.logger("[Turbo] Bet placed. Waiting for result...");
+
+    const finished = await waitForDicebetIdle(120000);
+    if (!finished) throw new Error("roll-timeout");
+    
+    return true;
+  }
 }
 
-async function persistRandom14Schedule(hostKey, settledBetCount, nextRandom14BetAt) {
-  const stored = await chrome.storage.local.get(window.RANDOM_14_STATE_STORAGE_KEY);
-  const currentState = stored?.[window.RANDOM_14_STATE_STORAGE_KEY];
-  const allState = currentState && typeof currentState === "object" ? { ...currentState } : {};
-  allState[hostKey] = {
-    settledBetCount: Math.max(0, Math.round(Number(settledBetCount) || 0)),
-    nextRandom14BetAt: Math.max(1, Math.round(Number(nextRandom14BetAt) || 1)),
-    updatedAt: Date.now()
-  };
-  await chrome.storage.local.set({ [window.RANDOM_14_STATE_STORAGE_KEY]: allState });
+/**
+ * WinStreakPyramidStrategy
+ * Increases bet selectively on wins, partial reset on loss.
+ */
+class WinStreakPyramid {
+  constructor(config, api, logger = log) {
+    this.config = typeof normalizePyramidConfig === "function" ? normalizePyramidConfig(config) : config;
+    this.api = api;
+    this.logger = logger;
+    this.level = 0;
+    this.startBalance = 0;
+    this.sessionProfit = 0;
+    this.side = config.dbSide || "higher";
+    this.isInitialized = false;
+  }
+
+  async init() {
+    this.startBalance = await this.api.getBalance();
+    // If balance is 0 or null, throw a soft error so we can exit gracefully
+    if (this.startBalance == null || this.startBalance <= 0) {
+        throw new Error("empty-balance-stopping");
+    }
+    this.isInitialized = true;
+    const initialBaseBet = this.calculateBaseBet(this.startBalance);
+    this.logger(`[Pyramid] Initialized. Start Balance: ${this.startBalance.toFixed(8)} | Session Base Bet: ${initialBaseBet.toFixed(8)} (${this.config.base_bet_pct}%)`);
+  }
+
+  calculateBaseBet(currentBalance) {
+    const raw = currentBalance * (this.config.base_bet_pct / 100);
+    return Math.max(raw, 0.00000001); // Safety floor
+  }
+
+  async runRound() {
+    if (!this.isInitialized) await this.init();
+
+    const currentBalance = await this.api.getBalance();
+    const profit = currentBalance - this.startBalance;
+    const profitPct = (profit / this.startBalance) * 100;
+
+    this.logger(`[Pyramid] Current Balance: ${currentBalance.toFixed(8)} | Profit: ${profit.toFixed(8)} (${profitPct.toFixed(2)}%)`);
+
+    // Pyramid Logic
+    const baseBet = this.calculateBaseBet(currentBalance);
+    const currentBet = baseBet * Math.pow(this.config.multiplier, this.level);
+    
+    this.logger(`[Pyramid] Level: ${this.level} | Bet: ${currentBet.toFixed(8)} | Side: ${this.side}`);
+
+    await this.api.setBetAmount(currentBet);
+    await this.api.setChance(48.5); // 50/50 target
+    await this.api.setSide(this.side);
+
+    const balanceBefore = await this.api.getBalance();
+    await this.api.roll();
+    
+    // Wait for balance to settle (Turbo: 50ms polling)
+    let balanceAfter = balanceBefore;
+    for (let i = 0; i < 40; i++) {
+        await sleep(50);
+        balanceAfter = await this.api.getBalance();
+        if (balanceAfter !== balanceBefore) break;
+    }
+    const win = balanceAfter > balanceBefore;
+
+    if (win) {
+      this.lossStreak = 0;
+      if (this.level >= this.config.max_level) {
+          this.logger(`[Pyramid] Max Level reached & won. Locking in profit and resetting.`);
+          this.level = 0;
+      } else {
+          this.level++;
+          this.logger(`[Pyramid] WIN! Moving to Level ${this.level}`);
+      }
+    } else {
+      this.lossStreak = (this.lossStreak || 0) + 1;
+      // Partial Reset
+      this.level = Math.max(0, this.level - this.config.drop_levels);
+      this.logger(`[Pyramid] LOSS (Streak: ${this.lossStreak}). Dropping to Level ${this.level}`);
+      
+      if (this.config.switch_on_loss) {
+        this.side = this.side === "higher" ? "lower" : "higher";
+      }
+
+      // Optional: Pause after 5 consecutive losses
+      if (this.lossStreak >= 5) {
+          this.logger(`[Pyramid] High loss streak detected. Pausing for 30s...`);
+          await sleep(30000);
+          this.lossStreak = 0;
+      }
+    }
+
+    return { stop: false };
+  }
 }
+
+// ── Legacy Strategy Support ───────────────────────────────────────────────────
 
 class CombinedHighRollerStrategy {
   constructor(config = {}, logger = log) {
@@ -153,7 +269,7 @@ class CombinedHighRollerStrategy {
     const hardCap = this.current_bankroll * this.config.max_bet_fraction;
     bet = Math.min(toFiniteNumber(bet, 0), hardCap, this.current_bankroll);
 
-    const startBalanceFloor = this.start_bankroll * window.MIN_STARTING_BALANCE_BET_FRACTION;
+    const startBalanceFloor = this.start_bankroll * (window.MIN_STARTING_BALANCE_BET_FRACTION || 0.01);
     if (this.current_bankroll <= startBalanceFloor) {
       bet = this.current_bankroll;
     } else {
@@ -251,353 +367,268 @@ class CombinedHighRollerStrategy {
   }
 }
 
+// ── Helpers & Entry Point ─────────────────────────────────────────────────────
+
 async function getDicebetConfig() {
-  const { settings } = await chrome.storage.local.get("settings");
+  const { settings, activeTabs = {} } = await chrome.storage.local.get(["settings", "activeTabs"]);
   const faucets = settings?.faucets || [];
   const faucet = faucets.find(f => {
     try { return new URL(f.url).hostname === location.hostname; } catch { return false; }
   });
-  const diceEnabled = faucet?.dbEnabled === true;
-  const strategy = normalizeDbStrategy(faucet?.dbStrategy, diceEnabled);
-  const parsedChance = parseFloat(faucet?.dbChance || "");
-  const normalizedThreshold = normalizeWdThresholdForHost(location.hostname, faucet?.wdThreshold);
-  const rawStrategyConfig = faucet?.dbStrategyConfig && typeof faucet.dbStrategyConfig === "object"
-    ? faucet.dbStrategyConfig
-    : (faucet?.dbStrategy && typeof faucet.dbStrategy === "object" ? faucet.dbStrategy : {});
+  
+  // Find current tab state to check for manual override
+  const tabData = Object.values(activeTabs).find(t => sameHost(t.faucetUrl, location.href));
+  const isManual = (location.hash === "#manual") || (tabData?.manualMode === true);
+  
+  const diceEnabled = isManual || (faucet?.dbEnabled === true);
+  const strategy = normalizeDbStrategy(faucet?.dbStrategy || "pyramid", diceEnabled);
+  
+  if (isManual) log("[Dice] Manual Override Active (#manual): Engine forced to ENABLED.");
+  
+  let strategyConfig = {};
+  if (strategy === DICE_STRATEGY_PYRAMID) {
+    strategyConfig = { ...DEFAULT_PYRAMID_CONFIG, ...(faucet?.dbPyramidConfig || {}) };
+  } else {
+    strategyConfig = faucet?.dbStrategyConfig || getDefaultHighRollerConfig();
+  }
 
   return {
     enabled: diceEnabled,
     side: normalizeDiceSide(faucet?.dbSide || "higher"),
     strategy,
-    chance: normalizeDiceChance(parsedChance, strategy),
-    wdThreshold: normalizedThreshold,
-    strategyConfig: rawStrategyConfig
+    chance: normalizeDbChance(faucet?.dbChance, strategy),
+    wdThreshold: normalizeWdThresholdForUrl(faucet?.url, faucet?.wdThreshold),
+    strategyConfig,
+    isManual
   };
 }
 
-function setDicebetInputValue(input, value) {
+async function setDicebetInputValue(input, value) {
   if (!input) return;
   input.focus();
-  input.value = String(value);
-  input.dispatchEvent(new Event("input", { bubbles: true }));
+  
+  // Human-like typing delay
+  const str = String(value);
+  input.value = ""; 
+  for (const char of str) {
+    input.value += char;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await sleep(20); 
+  }
+  
   input.dispatchEvent(new Event("change", { bubbles: true }));
   input.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true }));
   input.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true }));
+  input.blur(); 
 }
 
-function findDicebetChanceInput() {
-  const el = SiteSelectors.getFirstValid("diceChanceInput");
-  if (el) log(`✓ Found chance input`);
-  return el;
+function findDicebetChanceInput() { return SiteSelectors.getFirstValid("diceChanceInput"); }
+function findDicebetAmountInput() { return SiteSelectors.getFirstValid("diceAmountInput"); }
+function findDicebetBetButton() { return SiteSelectors.getFirstValid("diceBetButton"); }
+
+function applyDicebetSide(side) {
+  if (typeof window.bet_on === "string") window.bet_on = side;
+  if (typeof window.set_roll_to_win === "function") window.set_roll_to_win();
+  const label = document.getElementById("roll_to_win_lb");
+  if (label) label.textContent = side === "higher" ? "Roll over to win" : "Roll under to win";
 }
 
-function findDicebetBetButton() {
-  const selectors = SiteSelectors.get("diceBetButton");
-  for (const sel of selectors) {
-    const els = document.querySelectorAll(sel);
-    for (const el of els) {
-      if (!el.offsetParent) continue; 
-      const text = (el.textContent || el.value || '').toLowerCase();
-      if (text.includes('roll') || text.includes('bet') || text.includes('play')) {
-        log(`✓ Found bet button with selector: ${sel}, text: "${text}"`);
-        return el;
-      }
+function placeDicebetRound() {
+  if (typeof window.process_bet_game_dice === "function") {
+    try {
+      window.process_bet_game_dice();
+      return true;
+    } catch (err) {
+      log(`[Dice] Internal function failed: ${err.message}. Falling back to click.`);
     }
+  }
+  const btn = findDicebetBetButton();
+  if (btn) {
+    if (btn.disabled) {
+      log("[Dice] Button is disabled — forcing enable");
+      btn.disabled = false;
+    }
+    
+    // Aggressive Event Dispatch
+    btn.focus();
+    const events = ["mousedown", "mouseup", "click", "pointerdown", "pointerup"];
+    for (const type of events) {
+      btn.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
+    }
+    return true;
+  }
+  return false;
+}
+
+async function readDicebetBalanceWithRetries(maxRetries = 4, delayMs = 900) {
+  for (let i = 0; i < maxRetries; i++) {
+    const bal = readBalance();
+    if (bal != null) return bal;
+    await sleep(delayMs);
   }
   return null;
 }
 
-function findDicebetAmountInput() {
-  return SiteSelectors.getFirstValid("diceAmountInput");
+function isDicebetIdle() {
+  const btn = findDicebetBetButton();
+  if (btn && btn.disabled) return false;
+  
+  // Site-specific loaders
+  const loaders = [
+    ".loading", "#loading", ".spinner", ".progress", 
+    "[class*='loading' i]", "[id*='loading' i]",
+    ".btn-loading", "[disabled]"
+  ];
+  for (const sel of loaders) {
+    try {
+      const el = document.querySelector(sel);
+      if (el && el.offsetParent !== null) return false;
+    } catch (_) {}
+  }
+  
+  return true; 
 }
 
-function findDicebetMultiplierInput() {
-  return SiteSelectors.getFirstValid("diceMultiplierInput");
-}
-
-function applyDicebetSide(side) {
-  const normalized = normalizeDiceSide(side);
-  if (typeof window.bet_on === "string") {
-    window.bet_on = normalized;
-  }
-  if (typeof window.set_roll_to_win === "function") {
-    window.set_roll_to_win();
-  }
-  if (typeof window.set_slide_bar === "function") {
-    window.set_slide_bar();
-  }
-  const label = document.getElementById("roll_to_win_lb");
-  if (label) {
-    label.textContent = normalized === "higher" ? "Roll over to win" : "Roll under to win";
-  }
-}
-
-function readNumericInputById(id) {
-  const input = document.getElementById(id);
-  if (!input) return null;
-  const parsed = parseFloat(String(input.value || "").replace(/,/g, ""));
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function applyDicebetTargets(chance) {
-  const chanceInput = findDicebetChanceInput();
-  if (chanceInput && Number.isFinite(chance)) {
-    setDicebetInputValue(chanceInput, chance.toFixed(2));
-    if (typeof window.change_win_chance === "function") {
-      window.change_win_chance();
-    } else if (typeof window.change_win_chance2 === "function") {
-      window.change_win_chance2(chance);
-    }
-  }
-
-  return {
-    appliedChance: readNumericInputById("win_chance"),
-    appliedMultiplier: readNumericInputById("multiplier")
-  };
-}
-
-async function readDicebetBalanceWithRetries(maxRetries = 4, delayMs = 900) {
-  let balance = readBalance();
-  let attempt = 0;
-  while (balance == null && attempt < maxRetries) {
-    attempt += 1;
-    await sleep(delayMs);
-    balance = readBalance();
-  }
-  return balance;
-}
-
-async function waitForDicebetIdle(maxWaitMs = 15000) {
+async function waitForDicebetIdle(maxWaitMs = 5000) {
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
-    sendPhaseHeartbeat("dice-wait");
-    const autoStatus = typeof window.auto_betting_status === "string" ? window.auto_betting_status : "stopped";
-    if (autoStatus !== "running") return true;
-    await sleep(250);
+    if (isDicebetIdle()) return true;
+    await sleep(20);
   }
-  return false;
-}
-
-function placeDicebetRound(side) {
-  applyDicebetSide(side);
-
-  if (typeof window.process_bet_game_dice === "function") {
-    window.process_bet_game_dice();
-    return true;
-  }
-
-  const betButton = findDicebetBetButton();
-  if (!betButton) return false;
-  betButton.focus();
-  betButton.click();
-  return true;
-}
-
-async function runAllIn001Dicebet(side, threshold, chance) {
-  const allInChance = clampNumber(toFiniteNumber(chance, window.DEFAULT_ALL_IN_CHANCE_PERCENT), 0.01, 99);
-  log(`Running DiceBet strategy ${DICE_STRATEGY_ALL_IN_001}: single all-in shot at ${allInChance}%`);
-
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const chanceInput = findDicebetChanceInput();
-    const amountInput = findDicebetAmountInput();
-    const betButton = findDicebetBetButton();
-    if (chanceInput && amountInput && betButton) {
-      log(`✓ DiceBet page ready on attempt ${attempt + 1}`);
-      break;
-    }
-    if (attempt === 4) {
-      sendError("dicebet-page-not-ready");
-      return false;
-    }
-    await sleep(1000);
-  }
-
-  const balanceBefore = await readDicebetBalanceWithRetries(4, 750);
-  if (balanceBefore == null) {
-    sendError("dicebet-balance-read-failed");
-    return false;
-  }
-  if (balanceBefore <= 0) {
-    sendError("dicebet-no-balance-before-bet");
-    return false;
-  }
-  if (balanceBefore >= threshold) return true;
-
-  const readyToBet = await waitForDicebetIdle(120000);
-  if (!readyToBet) {
-    sendError("dicebet-stuck-running-before");
-    return false;
-  }
-
-  const amountInput = findDicebetAmountInput();
-  if (!amountInput) {
-    sendError("dicebet-no-amount-input");
-    return false;
-  }
-
-  const targetSnapshot = applyDicebetTargets(allInChance);
-  applyDicebetSide(side);
-  setDicebetInputValue(amountInput, balanceBefore.toFixed(8));
-  if (typeof window.change_bet_amount === "function") {
-    window.change_bet_amount();
-  }
-
-  const started = placeDicebetRound(side);
-  if (!started) {
-    sendError("dicebet-round-not-started");
-    return false;
-  }
-
-  const finishedRound = await waitForDicebetIdle(180000);
-  if (!finishedRound) {
-    sendError("dicebet-stuck-running-after");
-    return false;
-  }
-
-  await sleep(500);
-  const balanceAfter = await readDicebetBalanceWithRetries(4, 900);
-  if (balanceAfter == null) {
-    sendError("dicebet-balance-read-failed-after");
-    return false;
-  }
-
-  const won = balanceAfter > balanceBefore;
-  if (balanceAfter >= threshold) return true;
-
-  if (balanceAfter <= 0 || !won) {
-    sendError("dicebet-allin-loss");
-    return false;
-  }
-
-  sendError("dicebet-allin-not-hit");
-  return false;
+  log("[Dice] Idle wait timeout — proceeding anyway (Forced Mode)");
+  return true; // Forced fallback
 }
 
 async function runDicebet() {
-  log("Starting DiceBet");
+  window.auto_betting_status = "starting"; // Immediate lock
+  await sleep(1000); // 1s stability delay
+  
+  log("[Turbo] MANUAL BOOTSTRAP INITIATED");
+  await dicebetDiagnosticScan(); // Performance & Visibility Audit
+  
   sendPhaseHeartbeat("dice-start");
 
   const config = await getDicebetConfig();
-  if (!config.enabled) return false;
+  const threshold = parseFloat(config.wdThreshold);
+  const api = new DiceAPI(log);
 
-  const threshold = toFiniteNumber(config.wdThreshold, 0);
-  if (threshold <= 0) {
-    sendError("dicebet-invalid-threshold");
+  // Guard: If not enabled, just check if we need to withdraw and exit
+  if (!config.enabled) {
+    log("DiceBet disabled, performing threshold check only.");
+    const bal = await api.getBalance();
+    return bal != null && bal >= threshold;
+  }
+
+  // Guard: If no balance, exit immediately
+  const startBal = await api.getBalance();
+  if (startBal == null || startBal <= 0) {
+    log("DiceBet: No balance found, skipping betting phase.");
     return false;
   }
 
-  const side = normalizeDiceSide(config.side);
-  const strategyType = normalizeDbStrategy(config.strategy, true);
-  if (strategyType === DICE_STRATEGY_ALL_IN_001) {
-    return runAllIn001Dicebet(side, threshold, config.chance);
-  }
-
-  const chance = clampNumber(toFiniteNumber(config.chance, 48.5), 0.01, 99);
-  const strategy = new CombinedHighRollerStrategy(config.strategyConfig, log);
-  const random14Schedule = await loadRandom14Schedule(location.hostname);
-  const random14HostKey = random14Schedule.hostKey;
-  let settledBetCount = random14Schedule.settledBetCount;
-  let nextRandom14BetAt = random14Schedule.nextRandom14BetAt;
-
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const chanceInput = findDicebetChanceInput();
-    const amountInput = findDicebetAmountInput();
-    const betButton = findDicebetBetButton();
-    if (chanceInput && amountInput && betButton) break;
-    if (attempt === 4) {
-      sendError("dicebet-page-not-ready");
-      return false;
-    }
-    await sleep(1000);
-  }
-
-  const startBalance = await readDicebetBalanceWithRetries(4, 750);
-  if (startBalance == null) {
-    sendError("dicebet-balance-read-failed");
-    return false;
-  }
-  if (startBalance <= 0) {
-    sendError("dicebet-no-balance-before-bet");
-    return false;
-  }
-
-  strategy.initialize(startBalance);
-  let round = 0;
-
-  while (true) {
-    round += 1;
-    sendPhaseHeartbeat(`dice-round-${round}`);
-
-    const balanceBefore = await readDicebetBalanceWithRetries(3, 700);
-    if (balanceBefore == null) { sendError("dicebet-balance-read-failed"); return false; }
-    if (balanceBefore <= 0) { sendError("dicebet-no-balance-before-bet"); return false; }
-    if (balanceBefore >= threshold) return true;
-
-    if (strategy.should_stop()) {
-      sendError(`dicebet-${strategy.get_stop_reason() || "stopped"}`);
-      return false;
-    }
-
-    const amountInput = findDicebetAmountInput();
-    if (!amountInput) { sendError("dicebet-no-amount-input"); return false; }
-
-    strategy.current_bankroll = balanceBefore;
-    const nextBet = strategy.get_next_bet();
-    if (!Number.isFinite(nextBet) || nextBet <= 0) {
-      sendError(`dicebet-${strategy.get_stop_reason() || "invalid-bet"}`);
-      return false;
-    }
-
-    const upcomingBetNumber = settledBetCount + 1;
-    const isRandom14Round = upcomingBetNumber >= nextRandom14BetAt;
-    const activeChance = isRandom14Round ? window.RANDOM_14_CHANCE_PERCENT : chance;
-
-    const readyToBet = await waitForDicebetIdle(120000);
-    if (!readyToBet) {
-      await sleep(1200);
-      continue;
-    }
-
-    const activeAmountInput = findDicebetAmountInput() || amountInput;
-    if (!activeAmountInput) { sendError("dicebet-no-amount-input"); return false; }
+  // All-In Strategy
+  if (config.strategy === DICE_STRATEGY_ALL_IN_001) {
+    if (startBal >= threshold) return true;
     
-    applyDicebetTargets(activeChance);
-    applyDicebetSide(side);
-    setDicebetInputValue(activeAmountInput, nextBet.toFixed(8));
-    if (typeof window.change_bet_amount === "function") window.change_bet_amount();
-
-    const started = placeDicebetRound(side);
-    if (!started) {
-      await sleep(2000);
-      continue;
-    }
-
-    const finishedRound = await waitForDicebetIdle(180000);
-    if (!finishedRound) {
-      await sleep(1200);
-      continue;
-    }
-    await sleep(500);
-
-    const balanceAfter = await readDicebetBalanceWithRetries(4, 900);
-    if (balanceAfter == null) { sendError("dicebet-balance-read-failed-after"); return false; }
-
-    const win = balanceAfter > balanceBefore;
-    strategy.on_roll_result(win, balanceAfter);
-    settledBetCount += 1;
-    if (isRandom14Round) {
-      nextRandom14BetAt = settledBetCount + randomIntInclusive(window.RANDOM_14_MIN_BET_INTERVAL, window.RANDOM_14_MAX_BET_INTERVAL);
-    }
-    await persistRandom14Schedule(random14HostKey, settledBetCount, nextRandom14BetAt);
-
-    if (balanceAfter >= threshold) return true;
-    if (balanceAfter <= 0) { sendError("dicebet-no-balance-left"); return false; }
-
-    if (strategy.should_stop()) {
-      sendError(`dicebet-${strategy.get_stop_reason() || "stopped"}`);
-      return false;
-    }
-
-    await sleep(1200);
+    log(`[All-In] Balance: ${startBal.toFixed(8)} | Threshold: ${threshold}`);
+    await api.setBetAmount(startBal);
+    await api.setChance(config.chance);
+    await api.setSide(config.side);
+    await api.roll();
+    
+    const finalBal = await api.getBalance();
+    return finalBal != null && finalBal >= threshold;
   }
+
+  // Win-Streak Pyramid Strategy
+  if (config.strategy === DICE_STRATEGY_PYRAMID) {
+    const pyramid = new WinStreakPyramid(config.strategyConfig, api, log);
+    try {
+      while (true) {
+        const res = await pyramid.runRound();
+        if (res.stop) {
+            log("[Dice] Strategy signaled stop:", res.reason);
+            break;
+        }
+        await sleep(100); // Extreme Mode: Near-instant transition
+      }
+    } catch (err) {
+      if (err.message === 'empty-balance-stopping') {
+        log(`[Pyramid] Balance reached zero, stopping.`);
+      } else {
+        log(`[Pyramid] ERROR: ${err.message}`);
+      }
+    }
+    const finalBal = await api.getBalance();
+    return finalBal != null && finalBal >= threshold;
+  }
+
+  // Combined High Roller Strategy (Legacy support)
+  const strategy = new CombinedHighRollerStrategy(config.strategyConfig, log);
+  strategy.initialize(startBal);
+
+  try {
+    while (true) {
+      const bal = await api.getBalance();
+      if (bal == null || bal <= 0) break;
+      if (bal >= threshold) return true;
+      if (strategy.should_stop()) {
+        log(`[HighRoller] Stopped: ${strategy.get_stop_reason()}`);
+        break;
+      }
+
+      strategy.current_bankroll = bal;
+      const nextBet = strategy.get_next_bet();
+      if (nextBet <= 0) break;
+
+      await api.setBetAmount(nextBet);
+      await api.setChance(config.chance);
+      await api.setSide(config.side);
+      await api.roll();
+      
+      await sleep(1000);
+      const balAfter = await api.getBalance();
+      strategy.on_roll_result(balAfter > bal, balAfter);
+      
+      await sleep(1200);
+    }
+  } catch (err) {
+    log(`[HighRoller] ERROR: ${err.message}`);
+  }
+
+  const finalBal = await api.getBalance();
+  return finalBal != null && finalBal >= threshold;
+}
+
+async function dicebetDiagnosticScan() {
+  console.group("🔍 [Dice] DOM DIAGNOSTIC SCAN");
+  try {
+    const buttons = Array.from(document.querySelectorAll('button, input[type="button"], a[role="button"]'));
+    const inputs = Array.from(document.querySelectorAll('input:not([type="hidden"])'));
+    
+    console.log("Buttons found:", buttons.length);
+    buttons.forEach(b => {
+      const rect = b.getBoundingClientRect();
+      const visible = rect.width > 0 && rect.height > 0 && window.getComputedStyle(b).display !== 'none';
+      console.log(`- [${visible ? 'VISIBLE' : 'HIDDEN'}] Text: "${b.innerText?.trim() || b.value}" | ID: #${b.id} | Class: .${b.className.split(' ').join('.')}`);
+    });
+
+    console.log("Inputs found:", inputs.length);
+    inputs.forEach(i => {
+      console.log(`- Name: "${i.name}" | ID: #${i.id} | Placeholder: "${i.placeholder}" | Value: "${i.value}"`);
+    });
+
+    const rollBtn = findDicebetBetButton();
+    const amtInput = findDicebetAmountInput();
+    console.log("Target Roll Button:", rollBtn ? "FOUND ✅" : "NOT FOUND ❌");
+    console.log("Target Amount Input:", amtInput ? "FOUND ✅" : "NOT FOUND ❌");
+    
+    if (rollBtn) {
+      const style = window.getComputedStyle(rollBtn);
+      console.log("Roll Button Style:", { pointerEvents: style.pointerEvents, opacity: style.opacity, zIndex: style.zIndex });
+    }
+  } catch (err) {
+    console.error("Diagnostic failed:", err);
+  }
+  console.groupEnd();
 }
