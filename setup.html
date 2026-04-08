@@ -122,6 +122,20 @@
     .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
     input:checked + .slider { background-color: var(--status-ok); }
     input:checked + .slider:before { transform: translateX(16px); }
+
+    .skip-link {
+      display: block;
+      margin-top: 20px;
+      color: var(--text-dim);
+      font-size: 11px;
+      font-weight: 700;
+      text-decoration: none;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+    .skip-link:hover { color: var(--accent); }
   </style>
 </head>
 <body>
@@ -145,8 +159,9 @@
         <h2 style="margin-bottom:12px;">Get Started</h2>
         <p style="color:var(--text-dim); line-height:1.6;">Automate your favorite pick-style faucets in just a few clicks. FaucetPick handles the claims while you relax.</p>
       </div>
-      <div class="wizard-footer">
+      <div class="wizard-footer" style="flex-direction:column;">
         <button class="btn-p" id="welcomeBtn">Next Step ➔</button>
+        <a id="skipBtn" class="skip-link">Skip Setup & Go to Dashboard</a>
       </div>
     </section>
 

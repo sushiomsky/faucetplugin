@@ -70,7 +70,8 @@ class WinStreakPyramid {
     this.level = 0;
     this.startBalance = 0;
     this.sessionProfit = 0;
-    this.side = config.dbSide || "higher";
+    this.side = (config && config.side) ? config.side : "higher";
+    this.chance = (config && config.chance) ? config.chance : 49.5;
     this.isInitialized = false;
   }
 
@@ -106,7 +107,7 @@ class WinStreakPyramid {
     this.logger(`[Pyramid] Level: ${this.level} | Bet: ${currentBet.toFixed(8)} | Side: ${this.side}`);
 
     await this.api.setBetAmount(currentBet);
-    await this.api.setChance(48.5); // 50/50 target
+    await this.api.setChance(this.chance); 
     await this.api.setSide(this.side);
 
     const balanceBefore = await this.api.getBalance();
@@ -152,12 +153,77 @@ class WinStreakPyramid {
   }
 }
 
+/**
+ * TimeAccumulatorStrategy
+ * Bets accumulated profit with increasing risk as the next claim approaches.
+ */
+class TimeAccumulatorStrategy {
+  constructor(config = {}, api, intervalMinutes = 61, lastClaimedAt = 0, logger = log) {
+    this.config = config || { ...DEFAULT_TIME_ACCUMULATOR_CONFIG };
+    this.api = api;
+    this.logger = logger;
+    this.intervalMs = intervalMinutes * 60 * 1000;
+    this.lastClaimedAt = lastClaimedAt;
+    this.startBalance = 0;
+    this.isInitialized = false;
+  }
+
+  async init() {
+    this.startBalance = await this.api.getBalance();
+    if (this.startBalance == null || this.startBalance <= 0) {
+      throw new Error("empty-balance-stopping");
+    }
+    this.isInitialized = true;
+    this.logger(`[TimeAccumulator] Initialized. Start Balance: ${this.startBalance.toFixed(8)}`);
+  }
+
+  async runRound() {
+    if (!this.isInitialized) await this.init();
+
+    const currentBalance = await this.api.getBalance();
+    const accumulated = currentBalance - this.startBalance;
+    const now = Date.now();
+    const elapsed = now - this.lastClaimedAt;
+    const progress = Math.min(1.0, Math.max(0, elapsed / this.intervalMs));
+    
+    // Risk lerp: from min_fraction to max_fraction based on time progress
+    const minFrac = this.config.min_bet_fraction || 0.01;
+    const maxFrac = this.config.max_bet_fraction || 0.90;
+    const riskFactor = minFrac + (maxFrac - minFrac) * progress;
+
+    let betAmount = 0;
+    if (accumulated > 0) {
+      betAmount = accumulated * riskFactor;
+    } else {
+      // Safety floor: if no profit, bet a tiny fraction of balance to seed the "accumulated" fund
+      const safetyFloor = currentBalance * (this.config.safety_floor_pct / 100);
+      betAmount = Math.max(safetyFloor, 0.00000001);
+    }
+
+    // Hard floor at 1 satoshi
+    betAmount = Math.max(betAmount, 0.00000001);
+    // Hard cap at current balance
+    betAmount = Math.min(betAmount, currentBalance);
+
+    this.logger(`[TimeAccumulator] Progress: ${(progress * 100).toFixed(1)}% | Risk: ${(riskFactor * 100).toFixed(1)}% | Accumulated: ${accumulated.toFixed(8)} | Bet: ${betAmount.toFixed(8)}`);
+
+    await this.api.setBetAmount(betAmount);
+    await this.api.setChance(this.config.chance || 50);
+    await this.api.setSide(this.config.side || "higher");
+    await this.api.roll();
+
+    return { stop: false };
+  }
+}
+
 // ── Legacy Strategy Support ───────────────────────────────────────────────────
 
 class CombinedHighRollerStrategy {
   constructor(config = {}, logger = log) {
     this.config = normalizeHighRollerConfig(config);
     this.logger = typeof logger === "function" ? logger : () => {};
+    this.side = (config && config.side) ? config.side : "higher";
+    this.chance = (config && config.chance) ? config.chance : 49.5;
     this.initialize(0);
   }
 
@@ -233,7 +299,8 @@ class CombinedHighRollerStrategy {
 
   apply_bankroll_protection() {
     if (this.current_bankroll <= 0) {
-      return { stop: true, reason: "bankroll-zero" };
+      this.logger("[Dice] Bankroll reached zero. Waiting for next claim...");
+      return { stop: false, reason: "bankroll-zero" };
     }
     return { stop: false, reason: null };
   }
@@ -370,7 +437,7 @@ class CombinedHighRollerStrategy {
 // ── Helpers & Entry Point ─────────────────────────────────────────────────────
 
 async function getDicebetConfig() {
-  const { settings, activeTabs = {} } = await chrome.storage.local.get(["settings", "activeTabs"]);
+  const { settings, activeTabs = {}, claimHistory = {} } = await chrome.storage.local.get(["settings", "activeTabs", "claimHistory"]);
   const faucets = settings?.faucets || [];
   const faucet = faucets.find(f => {
     try { return new URL(f.url).hostname === location.hostname; } catch { return false; }
@@ -388,6 +455,8 @@ async function getDicebetConfig() {
   let strategyConfig = {};
   if (strategy === DICE_STRATEGY_PYRAMID) {
     strategyConfig = { ...DEFAULT_PYRAMID_CONFIG, ...(faucet?.dbPyramidConfig || {}) };
+  } else if (strategy === DICE_STRATEGY_TIME_ACCUMULATOR) {
+    strategyConfig = { ...DEFAULT_TIME_ACCUMULATOR_CONFIG, ...(faucet?.dbTimeAccumulatorConfig || {}) };
   } else {
     strategyConfig = faucet?.dbStrategyConfig || getDefaultHighRollerConfig();
   }
@@ -396,9 +465,15 @@ async function getDicebetConfig() {
     enabled: diceEnabled,
     side: normalizeDiceSide(faucet?.dbSide || "higher"),
     strategy,
-    chance: normalizeDbChance(faucet?.dbChance, strategy),
+    chance: toFiniteNumber(faucet?.dbChance, 49.5),
     wdThreshold: normalizeWdThresholdForUrl(faucet?.url, faucet?.wdThreshold),
-    strategyConfig,
+    lastClaimedAt: claimHistory[faucet?.url || ""] || 0,
+    intervalMinutes: faucet?.intervalMinutes || 61,
+    strategyConfig: {
+        ...strategyConfig,
+        dbSide: normalizeDiceSide(faucet?.dbSide || "higher"),
+        dbChance: toFiniteNumber(faucet?.dbChance, 49.5)
+    },
     isManual
   };
 }
@@ -526,78 +601,76 @@ async function runDicebet() {
     return false;
   }
 
-  // All-In Strategy
-  if (config.strategy === DICE_STRATEGY_ALL_IN_001) {
-    if (startBal >= threshold) return true;
-    
-    log(`[All-In] Balance: ${startBal.toFixed(8)} | Threshold: ${threshold}`);
-    await api.setBetAmount(startBal);
-    await api.setChance(config.chance);
-    await api.setSide(config.side);
-    await api.roll();
-    
-    const finalBal = await api.getBalance();
-    return finalBal != null && finalBal >= threshold;
-  }
-
-  // Win-Streak Pyramid Strategy
-  if (config.strategy === DICE_STRATEGY_PYRAMID) {
-    const pyramid = new WinStreakPyramid(config.strategyConfig, api, log);
+  // Recovery Wrapper: Ensuring the bot NEVER stops due to errors
+  while (true) {
     try {
-      while (true) {
-        const res = await pyramid.runRound();
-        if (res.stop) {
-            log("[Dice] Strategy signaled stop:", res.reason);
-            break;
+      const currentBal = await api.getBalance();
+      if (currentBal == null) {
+        log(`[Dice] Waiting for balance to load...`);
+        await sleep(5000);
+        continue;
+      }
+      if (currentBal >= threshold) return true;
+
+      // All-In Strategy
+      if (config.strategy === DICE_STRATEGY_ALL_IN_001) {
+        const allInCfg = config.allInConfig || {};
+        log(`[All-In] Balance: ${currentBal.toFixed(8)} | Threshold: ${threshold}`);
+        await api.setBetAmount(currentBal);
+        await api.setChance(allInCfg.chance || 49.5);
+        await api.setSide(allInCfg.side || "higher");
+        await api.roll();
+        await sleep(5000);
+        continue;
+      }
+
+      // Win-Streak Pyramid Strategy
+      if (config.strategy === DICE_STRATEGY_PYRAMID) {
+        const pyramid = new WinStreakPyramid(config.pyramidConfig, api, log);
+        while (true) {
+          const res = await pyramid.runRound();
+          await sleep(100); 
+          const bal = await api.getBalance();
+          if (bal >= threshold) return true;
         }
-        await sleep(100); // Extreme Mode: Near-instant transition
+      }
+
+      // Time-Accumulator Strategy
+      if (config.strategy === DICE_STRATEGY_TIME_ACCUMULATOR) {
+        const timeAcc = new TimeAccumulatorStrategy(config.strategyConfig, api, config.intervalMinutes, config.lastClaimedAt, log);
+        while (true) {
+          await timeAcc.runRound();
+          await sleep(200); 
+          const bal = await api.getBalance();
+          if (bal >= threshold) return true;
+        }
+      }
+
+      // Default / Combined High Roller Strategy
+      const hrCfg = config.strategyConfig || {};
+      const strategy = new CombinedHighRollerStrategy(hrCfg, log);
+      strategy.initialize(currentBal);
+      while (true) {
+        const bal = await api.getBalance();
+        if (bal >= threshold) return true;
+        
+        strategy.current_bankroll = bal || 0;
+        const nextBet = strategy.get_next_bet();
+        
+        await api.setBetAmount(nextBet);
+        await api.setChance(strategy.chance);
+        await api.setSide(strategy.side);
+        await api.roll();
+        
+        await sleep(2000);
+        const balAfter = await api.getBalance();
+        strategy.on_roll_result(balAfter > bal, balAfter);
       }
     } catch (err) {
-      if (err.message === 'empty-balance-stopping') {
-        log(`[Pyramid] Balance reached zero, stopping.`);
-      } else {
-        log(`[Pyramid] ERROR: ${err.message}`);
-      }
+      log(`[Dice] ENGINE CRASH DETECTED: ${err.message}. Rebooting in 5s...`);
+      await sleep(5000);
     }
-    const finalBal = await api.getBalance();
-    return finalBal != null && finalBal >= threshold;
   }
-
-  // Combined High Roller Strategy (Legacy support)
-  const strategy = new CombinedHighRollerStrategy(config.strategyConfig, log);
-  strategy.initialize(startBal);
-
-  try {
-    while (true) {
-      const bal = await api.getBalance();
-      if (bal == null || bal <= 0) break;
-      if (bal >= threshold) return true;
-      if (strategy.should_stop()) {
-        log(`[HighRoller] Stopped: ${strategy.get_stop_reason()}`);
-        break;
-      }
-
-      strategy.current_bankroll = bal;
-      const nextBet = strategy.get_next_bet();
-      if (nextBet <= 0) break;
-
-      await api.setBetAmount(nextBet);
-      await api.setChance(config.chance);
-      await api.setSide(config.side);
-      await api.roll();
-      
-      await sleep(1000);
-      const balAfter = await api.getBalance();
-      strategy.on_roll_result(balAfter > bal, balAfter);
-      
-      await sleep(1200);
-    }
-  } catch (err) {
-    log(`[HighRoller] ERROR: ${err.message}`);
-  }
-
-  const finalBal = await api.getBalance();
-  return finalBal != null && finalBal >= threshold;
 }
 
 async function dicebetDiagnosticScan() {

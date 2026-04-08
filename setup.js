@@ -195,15 +195,38 @@ window.addEventListener('DOMContentLoaded', () => {
       });
       
       chrome.runtime.sendMessage({ type: "save-settings", settings });
-      window.close();
+      window.location.href = "popup.html";
     } catch (err) {
       console.error("Setup failed:", err);
+    }
+  }
+
+  async function skipSetup() {
+    try {
+      const settings = {
+        enabled: false,
+        faucets: faucets,
+        botName: "Faucet Bot"
+      };
+      
+      await chrome.storage.local.set({ 
+        settings, 
+        running: false,
+        setupComplete: true 
+      });
+      
+      window.location.href = "popup.html";
+    } catch (err) {
+      console.error("Skip setup failed:", err);
     }
   }
 
   // Bind Events
   const welcomeBtn = document.getElementById('welcomeBtn');
   if (welcomeBtn) welcomeBtn.addEventListener('click', nextStep);
+
+  const skipBtn = document.getElementById('skipBtn');
+  if (skipBtn) skipBtn.addEventListener('click', skipSetup);
 
   const siteNextBtn = document.getElementById('siteNextBtn');
   if (siteNextBtn) siteNextBtn.addEventListener('click', nextStep);

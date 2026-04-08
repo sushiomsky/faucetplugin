@@ -25,7 +25,7 @@ window.RANDOM_14_STATE_STORAGE_KEY = "diceRandom14State";
 window.lastNativeClickAt = 0;
 window.lastPhaseHeartbeatAt = 0;
 
-window.DEBUG = true; 
+window.DEBUG = false; 
 function log(...a) {
   if (window.DEBUG) {
     console.log("[FaucetPick]", ...a);

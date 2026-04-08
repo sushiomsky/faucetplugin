@@ -24,12 +24,16 @@ function hostname(url) {
 }
 
 // ── Globals ──────────────────────────────────────────────────────────────────
+let currentModalTab = "claim"; // Persist modal tab state
 let currentFaucets = [];
 let selectedFaucetIndex = 0;
-let cryptoPrices = {};
 let minWdThresholds = {};
+let cryptoPrices = {};
+let faucetLoginStates = {}; // Cache for login status
+let faucetBalances = {}; // Cache for site balances
 let autoSaveTimeout = null;
 let saveIndicatorTimeout = null;
+let lastStatusCheck = 0; // Throttle background scraper
 
 function triggerAutoSave(debounceMs = 1000) {
   if (autoSaveTimeout) clearTimeout(autoSaveTimeout);
@@ -57,7 +61,11 @@ const saveBtn = document.getElementById("saveBtn");
 const saveMsg = document.getElementById("saveMsg");
 
 // ── Status Refresh Loop ──────────────────────────────────────────────────────
+let isStatusRefreshing = false;
 async function refreshStatus() {
+  if (isStatusRefreshing) return;
+  isStatusRefreshing = true;
+  try {
   const stored = await chrome.storage.local.get([
     "running", "settings", "activityLog", "activeTabs", "claimHistory", 
     "cryptoPrices", "minWdThresholds", "updateAvailable", "updateVersion", "updateUrl", "claimCounts"
@@ -65,10 +73,12 @@ async function refreshStatus() {
   
   const settings     = stored.settings || {};
   const enabled      = settings.enabled !== false;
-  const faucets      = settings.faucets || [];
   const activeTabs   = stored.activeTabs || {};
   const claimHistory = stored.claimHistory || {};
   const log          = stored.activityLog || [];
+  
+  // Ensure we have a list to render even if loadSettings is still working
+  const faucets      = (currentFaucets && currentFaucets.length > 0) ? currentFaucets : (settings.faucets || []);
   cryptoPrices       = stored.cryptoPrices?.data || {};
   const now          = Date.now();
 
@@ -130,10 +140,18 @@ async function refreshStatus() {
       </div>
     `;
     card.onclick = () => {
-      const idx = faucets.indexOf(f);
-      if (idx !== -1) {
-        selectedFaucetIndex = idx;
-        renderConfigForSite(idx);
+      const isLoggedIn = faucetLoginStates[f.url];
+      if (isLoggedIn === false) {
+        const refUrl = f.referralId ? `${f.url.replace(/\/$/, '')}/signup.php?ref=${f.referralId}` : f.url;
+        window.open(refUrl, "_blank");
+        return;
+      }
+      
+      // Find the site index in currentFaucets for reliable rendering
+      const actualIdx = currentFaucets.findIndex(cf => cf.url === f.url);
+      if (actualIdx !== -1) {
+        selectedFaucetIndex = actualIdx;
+        renderConfigForSite(actualIdx);
       }
     };
     dashboardGrid.appendChild(card);
@@ -147,6 +165,11 @@ async function refreshStatus() {
   // 5. Faucets Panel
   sitesListContainer.innerHTML = "";
   faucets.forEach((f, i) => {
+    const host = hostname(f.url);
+    const isLoggedIn = faucetLoginStates[f.url];
+    const detectedMin = minWdThresholds[host];
+    const balance = faucetBalances[f.url];
+
     const card = document.createElement("div");
     card.style = "background:var(--panel); border:1px solid var(--glass-border); border-radius:15px; padding:12px 15px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;";
     card.innerHTML = `
@@ -154,20 +177,73 @@ async function refreshStatus() {
         <div style="width:32px; height:32px; border-radius:8px; background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; color:var(--accent);">${f.label[0].toUpperCase()}</div>
         <div>
           <div style="font-size:12px; font-weight:700;">${f.coin || f.label.toUpperCase()}</div>
-          <div style="font-size:10px; color:var(--text-dim);">${hostname(f.url)}</div>
+          <div style="display:flex; gap:5px; align-items:center;">
+            <div style="font-size:9px; color:${isLoggedIn ? 'var(--status-ok)' : 'var(--status-err)'}; font-weight:700; text-transform:uppercase;">${isLoggedIn ? 'LOGGED IN' : 'LOGIN REQ.'}</div>
+            ${balance ? `<div style="font-size:9px; color:#fff; font-weight:700; background:rgba(255,255,255,0.05); padding:2px 6px; border-radius:4px;">${balance}</div>` : ""}
+          </div>
         </div>
       </div>
       <div style="display:flex; align-items:center; gap:10px;">
-        <div style="font-size:9px; font-weight:700; color:${f.active ? 'var(--status-ok)' : 'var(--text-dim)'};">${f.active ? 'ENABLED' : 'DISABLED'}</div>
-        <input type="checkbox" ${f.active ? 'checked' : ''} style="accent-color:var(--accent);">
+        <div style="text-align:right;">
+           <div style="font-size:9px; font-weight:700; color:${f.active ? 'var(--accent)' : 'var(--text-dim)'};">${f.active ? 'ACTIVE' : 'IDLE'}</div>
+           ${detectedMin ? `<div style="font-size:8px; color:var(--text-dim);">Min: ${detectedMin}</div>` : ""}
+        </div>
+        <input type="checkbox" ${f.active ? 'checked' : ''} style="accent-color:var(--accent); width:14px; height:14px;">
       </div>
     `;
-    card.onclick = () => {
-      selectedFaucetIndex = i;
-      renderConfigForSite(i);
+    card.onclick = (e) => {
+      // Toggle logic if clicking checkbox directly
+      if (e.target.tagName === 'INPUT') {
+          f.active = e.target.checked;
+          triggerAutoSave(0);
+          return;
+      }
+      
+      if (isLoggedIn === false) {
+        const refUrl = f.referralId ? `${f.url.replace(/\/$/, '')}/signup.php?ref=${f.referralId}` : f.url;
+        window.open(refUrl, "_blank");
+      } else {
+        const actualIdx = currentFaucets.findIndex(cf => cf.url === f.url);
+        if (actualIdx !== -1) {
+          selectedFaucetIndex = actualIdx;
+          renderConfigForSite(actualIdx);
+        }
+      }
     };
     sitesListContainer.appendChild(card);
   });
+
+  // 6. Background Scraper Trigger (Throttle: 1min)
+  if (now - lastStatusCheck > 60000) {
+    lastStatusCheck = now;
+    faucets.forEach(async (f) => {
+        const loggedIn = await checkLoginStatus(f);
+        faucetLoginStates[f.url] = loggedIn;
+        
+        if (loggedIn) {
+            // Fetch multiple data points concurrently
+            const [min, bal] = await Promise.all([
+                fetchMinWithdrawal(f),
+                fetchBalance(f)
+            ]);
+            
+            if (min) {
+                const host = hostname(f.url);
+                minWdThresholds[host] = min;
+                
+                // Auto-update threshold if invalid or missing AND not manual
+                const currentTh = parseFloat(f.wdThreshold);
+                if (!f.wdThresholdIsManual && (!Number.isFinite(currentTh) || currentTh < parseFloat(min))) {
+                    f.wdThreshold = min;
+                    triggerAutoSave(5000); // Debounce auto-update
+                }
+            }
+            if (bal) {
+                faucetBalances[f.url] = bal;
+            }
+        }
+    });
+  }
 
   // 6. History List
   renderHistory(log);
@@ -177,6 +253,78 @@ async function refreshStatus() {
   betBtn.disabled = false;
   runBtn.style.display = activeList.length > 0 ? "none" : "flex";
   stopBtn.style.display = activeList.length > 0 ? "flex" : "none";
+  } catch (err) {
+    console.error("[Popup] Refresh Error:", err);
+  } finally {
+    isStatusRefreshing = false;
+  }
+}
+
+async function checkLoginStatus(faucet) {
+  try {
+    const baseUrl = faucet.url.replace(/\/$/, '');
+    const testUrl = `${baseUrl}/faucet.php?_t=${Date.now()}`;
+    const resp = await fetch(testUrl, { credentials: 'include', redirect: 'follow', cache: 'no-cache' });
+    const finalUrl = resp.url.toLowerCase();
+    const isLoggedOut = finalUrl.includes('login') || finalUrl.includes('signup') || (finalUrl.includes('index.php') && !finalUrl.includes('faucet')) || finalUrl === baseUrl.toLowerCase() || finalUrl === (baseUrl + '/').toLowerCase();
+    return !isLoggedOut;
+  } catch (e) { return false; }
+}
+
+async function fetchMinWithdrawal(faucet) {
+  try {
+    const baseUrl = faucet.url.replace(/\/$/, '');
+    const testUrl = `${baseUrl}/withdrawal.php?_t=${Date.now()}`;
+    const resp = await fetch(testUrl, { credentials: 'include', redirect: 'follow', cache: 'no-cache' });
+    const html = await resp.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    
+    // Scrape withdrawal minimums using unified selectors and patterns
+    const selectors = SiteSelectors.get("withdrawMinAmountText");
+    for (const sel of selectors) {
+      const el = doc.querySelector(sel);
+      if (el) {
+        const text = el.textContent.trim();
+        for (const p of SCRAPE_WD_MIN_PATTERNS) {
+          const m = text.match(p);
+          if (m && m[1]) return m[1].replace(',', '');
+        }
+      }
+    }
+    
+    // Fallback: search entire body text if selectors fail
+    const fullText = doc.body.innerText;
+    for (const p of SCRAPE_WD_MIN_PATTERNS) {
+      const m = fullText.match(p);
+      if (m && m[1]) return m[1].replace(',', '');
+    }
+    return null;
+  } catch (e) { return null; }
+}
+
+async function fetchBalance(faucet) {
+  try {
+    const baseUrl = faucet.url.replace(/\/$/, '');
+    const testUrl = `${baseUrl}/faucet.php?_t=${Date.now()}`;
+    const resp = await fetch(testUrl, { credentials: 'include', redirect: 'follow', cache: 'no-cache' });
+    const html = await resp.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    
+    // Scrape balances using generic selectors
+    const selectors = ["#game_dice .user_balance", ".user_balance", ".balance-value", "#balance", ".bal-amt", ".val", "b"];
+    for (const sel of selectors) {
+      const els = doc.querySelectorAll(sel);
+      for (const el of els) {
+        const text = el.textContent.trim();
+        // Check for specific coin values (e.g., 0.000123)
+        const matches = text.match(/([0-9]+\.[0-9]{4,})/);
+        if (matches) return matches[1];
+      }
+    }
+    return null;
+  } catch (e) { return null; }
 }
 
 function renderHistory(log) {
@@ -192,7 +340,7 @@ function renderHistory(log) {
         <span class="history-meta">${e.reason || "Success"}</span>
       </div>
       <div class="history-side">
-        <div class="history-val">${e.balance ? e.balance.toFixed(5) : "✓"}</div>
+        <div class="history-val">${e.balance ? parseFloat(e.balance).toFixed(5) : "✓"}</div>
         <div class="history-ts">${fmtTime(e.ts)}</div>
       </div>
     </div>
@@ -201,49 +349,58 @@ function renderHistory(log) {
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 async function loadSettings() {
-  const stored = await chrome.storage.local.get(["settings", "minWdThresholds", "lastTab"]);
-  const s = stored.settings || {};
-  minWdThresholds = stored.minWdThresholds || {};
-  
-  const currentTab = stored.lastTab || "dashboard";
-  const navItem = document.querySelector(`.nav-item[data-tab="${currentTab}"]`);
-  if (navItem) navItem.click();
+  try {
+    const stored = await chrome.storage.local.get(["settings", "minWdThresholds", "lastTab"]);
+    const s = stored.settings || {};
+    minWdThresholds = stored.minWdThresholds || {};
+    
+    const currentTab = stored.lastTab || "dashboard";
+    const navItem = document.querySelector(`.nav-item[data-tab="${currentTab}"]`);
+    if (navItem) navItem.click();
 
-  document.getElementById("cfgEnabled").checked = s.enabled !== false;
-  document.getElementById("cfgBotName").value = s.botName === "Faucet Bot" ? "" : (s.botName || "");
-  if (botNameEl) botNameEl.textContent = s.botName || "Welcome Back!";
-  document.getElementById("longBreakEnabled").checked = s.longBreakEnabled === true;
-  document.getElementById("longBreakFrequency").value = s.longBreakFrequency || 5;
-  document.getElementById("longBreakMin").value = s.longBreakMin || 65;
-  document.getElementById("longBreakMax").value = s.longBreakMax || 80;
+    document.getElementById("cfgEnabled").checked = s.enabled !== false;
+    document.getElementById("cfgBotName").value = s.botName === "Faucet Bot" ? "" : (s.botName || "");
+    if (botNameEl) botNameEl.textContent = s.botName || "Welcome Back!";
+    document.getElementById("longBreakEnabled").checked = s.longBreakEnabled === true;
+    document.getElementById("longBreakFrequency").value = s.longBreakFrequency || 5;
+    document.getElementById("longBreakMin").value = s.longBreakMin || 65;
+    document.getElementById("longBreakMax").value = s.longBreakMax || 80;
 
-  const tg = s.telegram || {};
-  document.getElementById("tgEnabled").checked = tg.enabled === true;
-  document.getElementById("tgToken").value = tg.botToken || "";
-  document.getElementById("tgChatId").value = tg.chatId || "";
+    const tg = s.telegram || {};
+    document.getElementById("tgEnabled").checked = tg.enabled === true;
+    document.getElementById("tgToken").value = tg.botToken || "";
+    document.getElementById("tgChatId").value = tg.chatId || "";
 
-  const storedFaucets = s.faucets || [];
-  const storedByUrl = {};
-  for (const f of storedFaucets) { if (f.url) storedByUrl[f.url] = f; }
-  
-  const defaultFaucets = makeFaucetDefaults();
-  const allBaseFaucets = [...defaultFaucets, ...(s.customFaucets || [])];
+    const storedFaucets = s.faucets || [];
+    const storedByUrl = {};
+    for (const f of storedFaucets) { if (f.url) storedByUrl[f.url] = f; }
+    
+    const defaultFaucets = makeFaucetDefaults();
+    const allBaseFaucets = [...defaultFaucets, ...(s.customFaucets || [])];
 
-  currentFaucets = await Promise.all(allBaseFaucets.map(async def => {
-    const merged = { ...def, ...(storedByUrl[def.url] || {}) };
-    let dUser = merged.username || "", dPass = merged.password || "";
-    if (typeof CryptoUtils !== "undefined" && dUser && dUser.length > 30) {
-      dUser = await CryptoUtils.decrypt(dUser);
-      dPass = await CryptoUtils.decrypt(dPass);
-    }
-    return { ...merged, username: dUser, password: dPass };
-  }));
+    currentFaucets = await Promise.all(allBaseFaucets.map(async def => {
+      try {
+        const merged = { ...def, ...(storedByUrl[def.url] || {}) };
+        let dUser = merged.username || "", dPass = merged.password || "";
+        if (typeof CryptoUtils !== "undefined" && dUser && dUser.length > 30) {
+          dUser = await CryptoUtils.decrypt(dUser);
+          dPass = await CryptoUtils.decrypt(dPass);
+        }
+        return { ...merged, username: dUser, password: dPass };
+      } catch (e) {
+        console.warn(`[Popup] Failed to load config for ${def.url}:`, e);
+        return def;
+      }
+    }));
 
-  // Attach global auto-save listeners
-  document.querySelectorAll("#tab-settings input, #tab-settings select").forEach(el => {
-    const event = (el.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input';
-    el.addEventListener(event, () => triggerAutoSave(el.type === 'checkbox' ? 0 : 1000));
-  });
+    // Attach global auto-save listeners
+    document.querySelectorAll("#tab-settings input, #tab-settings select").forEach(el => {
+      const event = (el.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input';
+      el.addEventListener(event, () => triggerAutoSave(el.type === 'checkbox' ? 0 : 1000));
+    });
+  } catch (err) {
+    console.error("[Popup] Critical LoadSettings Failure:", err);
+  }
 }
 
 function renderConfigForSite(index) {
@@ -257,107 +414,248 @@ function renderConfigForSite(index) {
   label.textContent = (f.coin || f.label.toUpperCase()) + " Settings";
 
   const host = hostname(f.url);
-  const minThreshold = minWdThresholds[host];
+  const minThreshold = f.wdMinDetected || minWdThresholds[host];
 
   card.innerHTML = `
-    <div class="field">
-      <label class="label">Claim Every (Minutes)</label>
-      <input type="number" id="fint" value="${f.intervalMinutes || 61}" min="1">
-    </div>
-    <div style="display:flex; gap:10px;">
-      <div class="field" style="flex:1">
-        <label class="label">Extra Wait Min</label>
-        <input type="number" id="frmin" value="${f.minRandomMinutes || 0}" min="0">
-      </div>
-      <div class="field" style="flex:1">
-        <label class="label">Extra Wait Max</label>
-        <input type="number" id="frmax" value="${f.maxRandomMinutes || 5}" min="0">
-      </div>
+    <div class="modal-tabs">
+      <div class="modal-tab ${currentModalTab === 'claim' ? 'active' : ''}" data-target="section-claim">Claim</div>
+      <div class="modal-tab ${currentModalTab === 'dice' ? 'active' : ''}" data-target="section-dice">Dice</div>
+      <div class="modal-tab ${currentModalTab === 'withdraw' ? 'active' : ''}" data-target="section-withdraw">Withdraw</div>
     </div>
 
-    <div class="group-header" style="margin-top:15px; border-top:1px solid var(--glass-border); padding-top:10px;"><span>🎲</span> Dice Betting</div>
-    <div class="toggle-switch" style="margin-bottom:10px;">
-       <span class="label">Enable Dice Strategy</span>
-       <input type="checkbox" id="fdb" ${f.dbEnabled ? "checked" : ""}>
-    </div>
-    
-    <div id="diceSettings" style="display:${f.dbEnabled ? 'block' : 'none'};">
+    <!-- ── SECTION: CLAIM ── -->
+    <div class="modal-section ${currentModalTab === 'claim' ? 'active' : ''}" id="section-claim">
+      <div class="toggle-switch" style="margin-bottom:15px; background:rgba(74,144,226,0.1); padding:10px; border-radius:12px; border:1px solid rgba(74,144,226,0.2);">
+         <span class="label" style="color:#fff; font-weight:700;">🟢 Site Automation Active</span>
+         <input type="checkbox" id="factive" ${f.active !== false ? "checked" : ""}>
+      </div>
+
       <div class="field">
-        <label class="label">Strategy</label>
-        <select id="fdbStrategy" style="width:100%; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:#fff; padding:8px; border-radius:8px;">
-          <option value="${DICE_STRATEGY_ALL_IN_001}" ${f.dbStrategy === DICE_STRATEGY_ALL_IN_001 ? "selected" : ""}>All-In (Target Threshold)</option>
-          <option value="${DICE_STRATEGY_COMBINED_HIGH_ROLLER}" ${f.dbStrategy === DICE_STRATEGY_COMBINED_HIGH_ROLLER ? "selected" : ""}>Combined High Roller</option>
-          <option value="${DICE_STRATEGY_PYRAMID}" ${f.dbStrategy === DICE_STRATEGY_PYRAMID ? "selected" : ""}>Win-Streak Pyramid</option>
-        </select>
+        <label class="label">Claim Every (Minutes)</label>
+        <input type="number" id="fint" value="${f.intervalMinutes || 61}" min="1">
       </div>
-
-      <div id="pyramidConfig" style="display:${f.dbStrategy === DICE_STRATEGY_PYRAMID ? 'block' : 'none'}; margin-top:10px; background:rgba(255,255,255,0.02); padding:10px; border-radius:10px; border:1px solid var(--glass-border);">
-        <div style="display:flex; gap:10px;">
-          <div class="field" style="flex:1">
-            <label class="label">Base Bet %</label>
-            <input type="number" id="pyrBase" value="${f.dbPyramidConfig?.base_bet_pct || 0.05}" step="any">
-          </div>
-          <div class="field" style="flex:1">
-            <label class="label">Multiplier</label>
-            <input type="number" id="pyrMult" value="${f.dbPyramidConfig?.multiplier || 2.0}" step="any">
-          </div>
+      <div class="input-row">
+        <div class="field">
+          <label class="label">Extra Wait Min</label>
+          <input type="number" id="frmin" value="${f.minRandomMinutes || 0}" min="0">
         </div>
-        <div style="display:flex; gap:10px;">
-          <div class="field" style="flex:1">
-            <label class="label">Max Level</label>
-            <input type="number" id="pyrMax" value="${f.dbPyramidConfig?.max_level || 5}">
-          </div>
-          <div class="field" style="flex:1">
-            <label class="label">Drop Level</label>
-            <input type="number" id="pyrDrop" value="${f.dbPyramidConfig?.drop_levels || 2}">
-          </div>
+        <div class="field">
+          <label class="label">Extra Wait Max</label>
+          <input type="number" id="frmax" value="${f.maxRandomMinutes || 5}" min="0">
         </div>
-        <div style="display:flex; gap:10px;">
-          <div class="field" style="flex:1">
-            <label class="label">Target Profit %</label>
-            <input type="number" id="pyrTP" value="${f.dbPyramidConfig?.target_profit_pct || 10}" step="any">
-          </div>
-          <div class="field" style="flex:1">
-            <label class="label">Stop Loss %</label>
-            <input type="number" id="pyrSL" value="${f.dbPyramidConfig?.max_loss_pct || 20}" step="any">
-          </div>
-        </div>
-        <div class="toggle-switch">
-          <span class="label">Switch Side on Loss</span>
-          <input type="checkbox" id="pyrSwitch" ${f.dbPyramidConfig?.switch_on_loss !== false ? "checked" : ""}>
-        </div>
+      </div>
+      <div style="margin-top:auto; padding-top:10px;">
+        <button class="btn-secondary" id="openSiteBtn" style="width:100%; background:var(--glass-border); border:none; color:var(--text-dim); padding:10px; border-radius:12px; font-size:10px; cursor:pointer; font-weight:600;">🌐 Open Faucet URL</button>
       </div>
     </div>
 
-    <div class="group-header" style="margin-top:15px; border-top:1px solid var(--glass-border); padding-top:10px;"><span>💰</span> Withdrawal</div>
-    <div class="toggle-switch" style="margin-bottom:10px;">
-       <span class="label">Auto-Withdrawal</span>
-       <input type="checkbox" id="fwd" ${f.wdEnabled ? "checked" : ""}>
+    <!-- ── SECTION: DICE ── -->
+    <div class="modal-section ${currentModalTab === 'dice' ? 'active' : ''}" id="section-dice">
+      <div class="toggle-switch">
+         <span class="label" style="color:var(--accent)">Enable Dice Strategy</span>
+         <input type="checkbox" id="fdb" ${f.dbEnabled ? "checked" : ""}>
+      </div>
+      
+      <div id="diceSettings" style="display:${f.dbEnabled ? 'flex' : 'none'}; flex-direction:column; gap:15px;">
+        <div class="field">
+          <label class="label">Strategy Mode</label>
+          <select id="fdbStrategy">
+            <option value="${DICE_STRATEGY_ALL_IN_001}" ${f.dbStrategy === DICE_STRATEGY_ALL_IN_001 ? "selected" : ""}>All-In (Target Threshold)</option>
+            <option value="${DICE_STRATEGY_COMBINED_HIGH_ROLLER}" ${f.dbStrategy === DICE_STRATEGY_COMBINED_HIGH_ROLLER ? "selected" : ""}>Combined High Roller</option>
+            <option value="${DICE_STRATEGY_PYRAMID}" ${f.dbStrategy === DICE_STRATEGY_PYRAMID ? "selected" : ""}>Win-Streak Pyramid</option>
+            <option value="${DICE_STRATEGY_TIME_ACCUMULATOR}" ${f.dbStrategy === DICE_STRATEGY_TIME_ACCUMULATOR ? "selected" : ""}>Time-Accumulator</option>
+          </select>
+        </div>
+
+        <div id="allInConfig" style="display:${f.dbStrategy === DICE_STRATEGY_ALL_IN_001 ? 'flex' : 'none'}; flex-direction:column; gap:12px; background:rgba(255,255,255,0.02); padding:10px; border-radius:12px; border:1px solid var(--glass-border);">
+          <div class="input-row">
+            <div class="field">
+              <label class="label" style="font-size:9px;">Side</label>
+              <select id="allInSide">
+                <option value="higher" ${f.dbAllInConfig?.side !== "lower" ? "selected" : ""}>Over</option>
+                <option value="lower" ${f.dbAllInConfig?.side === "lower" ? "selected" : ""}>Under</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="label" style="font-size:9px;">Win %</label>
+              <input type="number" id="allInChance" value="${f.dbAllInConfig?.chance || f.dbChance || 49.5}" step="0.01">
+            </div>
+          </div>
+        </div>
+
+        <div id="pyramidConfig" style="display:${f.dbStrategy === DICE_STRATEGY_PYRAMID ? 'flex' : 'none'}; flex-direction:column; gap:8px; background:rgba(255,255,255,0.02); padding:10px; border-radius:12px; border:1px solid var(--glass-border);">
+          <div class="input-row">
+            <div class="field">
+              <label class="label" style="font-size:9px;">Side</label>
+              <select id="pyrSide">
+                <option value="higher" ${f.dbPyramidConfig?.side !== "lower" ? "selected" : ""}>Over</option>
+                <option value="lower" ${f.dbPyramidConfig?.side === "lower" ? "selected" : ""}>Under</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="label" style="font-size:9px;">Win %</label>
+              <input type="number" id="pyrChance" value="${f.dbPyramidConfig?.chance || f.dbChance || 49.5}" step="0.01">
+            </div>
+          </div>
+          <div class="input-row">
+            <div class="field">
+              <label class="label" style="font-size:9px;">Base %</label>
+              <input type="number" id="pyrBase" value="${f.dbPyramidConfig?.base_bet_pct || 0.05}" step="any">
+            </div>
+            <div class="field">
+              <label class="label" style="font-size:9px;">Mult</label>
+              <input type="number" id="pyrMult" value="${f.dbPyramidConfig?.multiplier || 2.0}" step="any">
+            </div>
+          </div>
+          <div class="input-row">
+            <div class="field">
+              <label class="label" style="font-size:9px;">Max Lvl</label>
+              <input type="number" id="pyrMax" value="${f.dbPyramidConfig?.max_level || 5}">
+            </div>
+            <div class="field">
+              <label class="label" style="font-size:9px;">Drop</label>
+              <input type="number" id="pyrDrop" value="${f.dbPyramidConfig?.drop_levels || 2}">
+            </div>
+          </div>
+          <div class="toggle-switch" style="margin-top:2px;">
+            <span class="label" style="font-size:9px;">Flip on Loss</span>
+            <input type="checkbox" id="pyrSwitch" ${f.dbPyramidConfig?.switch_on_loss !== false ? "checked" : ""}>
+          </div>
+        </div>
+
+        <div id="highRollerConfig" style="display:${f.dbStrategy === DICE_STRATEGY_COMBINED_HIGH_ROLLER ? 'flex' : 'none'}; flex-direction:column; gap:8px; background:rgba(255,255,255,0.02); padding:10px; border-radius:12px; border:1px solid var(--glass-border);">
+          <div class="input-row">
+            <div class="field">
+              <label class="label" style="font-size:9px;">Side</label>
+              <select id="hrSide">
+                <option value="higher" ${f.dbStrategyConfig?.side !== "lower" ? "selected" : ""}>Over</option>
+                <option value="lower" ${f.dbStrategyConfig?.side === "lower" ? "selected" : ""}>Under</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="label" style="font-size:9px;">Win %</label>
+              <input type="number" id="hrChance" value="${f.dbStrategyConfig?.chance || f.dbChance || 49.5}" step="0.01">
+            </div>
+          </div>
+          <div class="input-row">
+            <div class="field">
+              <label class="label" style="font-size:9px;">Base Frac.</label>
+              <input type="number" id="hrBase" value="${f.dbStrategyConfig?.base_bet_fraction || 0.10}" step="any">
+            </div>
+            <div class="field">
+              <label class="label" style="font-size:9px;">Max Frac.</label>
+              <input type="number" id="hrMaxBet" value="${f.dbStrategyConfig?.max_bet_fraction || 0.40}" step="any">
+            </div>
+          </div>
+          <div class="input-row">
+            <div class="field">
+              <label class="label" style="font-size:9px;">Ladder</label>
+              <input type="number" id="hrLadder" value="${f.dbStrategyConfig?.max_ladder_depth || 5}">
+            </div>
+            <div class="field">
+              <label class="label" style="font-size:9px;">History</label>
+              <input type="number" id="hrHistory" value="${f.dbStrategyConfig?.history_window || 10}">
+            </div>
+          </div>
+        </div>
+
+        <div id="timeAccumulatorConfig" style="display:${f.dbStrategy === DICE_STRATEGY_TIME_ACCUMULATOR ? 'flex' : 'none'}; flex-direction:column; gap:8px; background:rgba(255,255,255,0.02); padding:10px; border-radius:12px; border:1px solid var(--glass-border);">
+          <div class="input-row">
+            <div class="field">
+              <label class="label" style="font-size:9px;">Side</label>
+              <select id="taSide">
+                <option value="higher" ${f.dbTimeAccumulatorConfig?.side !== "lower" ? "selected" : ""}>Over</option>
+                <option value="lower" ${f.dbTimeAccumulatorConfig?.side === "lower" ? "selected" : ""}>Under</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="label" style="font-size:9px;">Win %</label>
+              <input type="number" id="taChance" value="${f.dbTimeAccumulatorConfig?.chance || 50}" step="0.01">
+            </div>
+          </div>
+          <div class="input-row">
+            <div class="field">
+              <label class="label" style="font-size:9px;">Min Frac.</label>
+              <input type="number" id="taMinFrac" value="${f.dbTimeAccumulatorConfig?.min_bet_fraction || 0.01}" step="any">
+            </div>
+            <div class="field">
+              <label class="label" style="font-size:9px;">Max Frac.</label>
+              <input type="number" id="taMaxFrac" value="${f.dbTimeAccumulatorConfig?.max_bet_fraction || 0.90}" step="any">
+            </div>
+          </div>
+          <div class="field" style="margin-top:2px;">
+            <label class="label" style="font-size:9px;">Seed Bet (if no profit) % of balance</label>
+            <input type="number" id="taSeed" value="${f.dbTimeAccumulatorConfig?.safety_floor_pct || 0.05}" step="any">
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="field">
-      <label class="label">Withdraw Amount</label>
-      <input type="number" id="fwdth" value="${f.wdThreshold || ""}" step="any">
-      ${minThreshold ? `<span style="font-size:9px; color:var(--accent);">Minimum: ${minThreshold}</span>` : ""}
-    </div>
-    <div class="field">
-      <label class="label">Wallet Address</label>
-      <input type="text" id="fwdaddr" value="${f.wdAddress || ""}" placeholder="Enter your address">
-    </div>
-    <div style="margin-top:15px;">
-      <button class="btn-secondary" id="openSiteBtn" style="width:100%; background:var(--glass-border); border:none; color:#fff; padding:10px; border-radius:12px; font-size:11px; cursor:pointer; font-weight:600;">🌐 Open Signup Page (?ref=)</button>
+
+    <!-- ── SECTION: WITHDRAW ── -->
+    <div class="modal-section ${currentModalTab === 'withdraw' ? 'active' : ''}" id="section-withdraw">
+      <div class="toggle-switch" style="margin-bottom:10px;">
+         <span class="label" style="color:var(--status-err)">Auto-Withdrawal</span>
+         <input type="checkbox" id="fwd" ${f.wdEnabled ? "checked" : ""}>
+      </div>
+      <div class="field">
+        <label class="label">Withdraw Amount</label>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <input type="number" id="fwdth" value="${f.wdThreshold || ""}" step="any" min="${minThreshold || 0}" style="flex:1;">
+          <span id="detectedMinLabel" style="font-size:9px; color:var(--accent); white-space:nowrap; background:rgba(74,144,226,0.05); padding:2px 6px; border-radius:4px; border:1px solid rgba(74,144,226,0.1);">Min: ${minThreshold || "–"}</span>
+        </div>
+      </div>
+      <div class="field">
+        <label class="label">Receiver Wallet Address</label>
+        <input type="text" id="fwdaddr" value="${f.wdAddress || ""}" placeholder="Address">
+      </div>
     </div>
   `;
+
+  // Attach tab switching logic
+  card.querySelectorAll(".modal-tab").forEach(tab => {
+    tab.onclick = () => {
+      card.querySelectorAll(".modal-tab").forEach(t => t.classList.remove("active"));
+      card.querySelectorAll(".modal-section").forEach(s => s.classList.remove("active"));
+      tab.classList.add("active");
+      const target = card.querySelector("#" + tab.dataset.target);
+      if (target) target.classList.add("active");
+      currentModalTab = tab.dataset.target.replace("section-", "");
+      
+      // Trigger fresh scraper if navigating to Withdraw tab
+      if (currentModalTab === "withdraw") {
+        fetchMinWithdrawal(f).then(min => {
+          if (min) {
+            f.wdMinDetected = min;
+            const label = card.querySelector("#detectedMinLabel");
+            if (label) label.textContent = "Min: " + min;
+            const input = card.querySelector("#fwdth");
+            if (input) {
+              input.min = min;
+              if (!f.wdThresholdIsManual) {
+                input.value = min;
+                f.wdThreshold = min;
+              }
+            }
+          }
+        });
+      }
+    };
+  });
 
   const dSettings = card.querySelector("#diceSettings");
   const pConfig = card.querySelector("#pyramidConfig");
 
   card.querySelector("#fdb").addEventListener("change", (e) => {
-    dSettings.style.display = e.target.checked ? "block" : "none";
+    dSettings.style.display = e.target.checked ? "flex" : "none";
     f.dbEnabled = e.target.checked;
   });
 
   card.querySelector("#fdbStrategy").addEventListener("change", (e) => {
-    pConfig.style.display = e.target.value === DICE_STRATEGY_PYRAMID ? "block" : "none";
+    pConfig.style.display = e.target.value === DICE_STRATEGY_PYRAMID ? "flex" : "none";
+    const hrConfig = card.querySelector("#highRollerConfig");
+    if (hrConfig) hrConfig.style.display = e.target.value === DICE_STRATEGY_COMBINED_HIGH_ROLLER ? "flex" : "none";
+    const taConfig = card.querySelector("#timeAccumulatorConfig");
+    if (taConfig) taConfig.style.display = e.target.value === DICE_STRATEGY_TIME_ACCUMULATOR ? "flex" : "none";
     f.dbStrategy = e.target.value;
   });
 
@@ -369,25 +667,95 @@ function renderConfigForSite(index) {
   card.querySelectorAll("input, select").forEach(el => {
     const event = (el.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input';
     el.addEventListener(event, () => {
-      f.intervalMinutes = parseInt(card.querySelector("#fint").value) || 61;
-      f.minRandomMinutes = parseInt(card.querySelector("#frmin").value) || 0;
-      f.maxRandomMinutes = parseInt(card.querySelector("#frmax").value) || 5;
+      const factiveEl = card.querySelector("#factive");
+      if (factiveEl) f.active = factiveEl.checked;
+      
+      const fintEl = card.querySelector("#fint");
+      if (fintEl) f.intervalMinutes = parseInt(fintEl.value) || 61;
+      
+      const frminEl = card.querySelector("#frmin");
+      if (frminEl) f.minRandomMinutes = parseInt(frminEl.value) || 0;
+      
+      const frmaxEl = card.querySelector("#frmax");
+      if (frmaxEl) f.maxRandomMinutes = parseInt(frmaxEl.value) || 5;
       
       f.dbEnabled = card.querySelector("#fdb").checked;
       f.dbStrategy = card.querySelector("#fdbStrategy").value;
       
-      if (!f.dbPyramidConfig) f.dbPyramidConfig = {};
-      f.dbPyramidConfig.base_bet_pct = parseFloat(card.querySelector("#pyrBase").value);
-      f.dbPyramidConfig.multiplier = parseFloat(card.querySelector("#pyrMult").value);
-      f.dbPyramidConfig.max_level = parseInt(card.querySelector("#pyrMax").value);
-      f.dbPyramidConfig.drop_levels = parseInt(card.querySelector("#pyrDrop").value);
-      f.dbPyramidConfig.target_profit_pct = parseFloat(card.querySelector("#pyrTP").value);
-      f.dbPyramidConfig.max_loss_pct = parseFloat(card.querySelector("#pyrSL").value);
-      f.dbPyramidConfig.switch_on_loss = card.querySelector("#pyrSwitch").checked;
+      // Toggle Strategy Container Visibility
+      card.querySelector("#allInConfig").style.display = f.dbStrategy === DICE_STRATEGY_ALL_IN_001 ? "flex" : "none";
+      card.querySelector("#pyramidConfig").style.display = f.dbStrategy === DICE_STRATEGY_PYRAMID ? "flex" : "none";
+      card.querySelector("#highRollerConfig").style.display = f.dbStrategy === DICE_STRATEGY_COMBINED_HIGH_ROLLER ? "flex" : "none";
+      card.querySelector("#timeAccumulatorConfig").style.display = f.dbStrategy === DICE_STRATEGY_TIME_ACCUMULATOR ? "flex" : "none";
 
-      f.wdEnabled = card.querySelector("#fwd").checked;
-      f.wdThreshold = card.querySelector("#fwdth").value.trim();
-      f.wdAddress = card.querySelector("#fwdaddr").value.trim();
+      // All-In Mapping
+      if (!f.dbAllInConfig) f.dbAllInConfig = {};
+      const allInSideEl = card.querySelector("#allInSide");
+      if (allInSideEl) f.dbAllInConfig.side = allInSideEl.value;
+      const allInChanceEl = card.querySelector("#allInChance");
+      if (allInChanceEl) f.dbAllInConfig.chance = parseFloat(allInChanceEl.value);
+
+      // Pyramid Mapping
+      if (!f.dbPyramidConfig) f.dbPyramidConfig = {};
+      const pyrSideEl = card.querySelector("#pyrSide");
+      if (pyrSideEl) f.dbPyramidConfig.side = pyrSideEl.value;
+      const pyrChanceEl = card.querySelector("#pyrChance");
+      if (pyrChanceEl) f.dbPyramidConfig.chance = parseFloat(pyrChanceEl.value);
+      const pyrBaseEl = card.querySelector("#pyrBase");
+      if (pyrBaseEl) f.dbPyramidConfig.base_bet_pct = parseFloat(pyrBaseEl.value);
+      const pyrMultEl = card.querySelector("#pyrMult");
+      if (pyrMultEl) f.dbPyramidConfig.multiplier = parseFloat(pyrMultEl.value);
+      const pyrMaxEl = card.querySelector("#pyrMax");
+      if (pyrMaxEl) f.dbPyramidConfig.max_level = parseInt(pyrMaxEl.value);
+      const pyrDropEl = card.querySelector("#pyrDrop");
+      if (pyrDropEl) f.dbPyramidConfig.drop_levels = parseInt(pyrDropEl.value);
+      const pyrSwitchEl = card.querySelector("#pyrSwitch");
+      if (pyrSwitchEl) f.dbPyramidConfig.switch_on_loss = pyrSwitchEl.checked;
+      
+      // High Roller Mapping
+      if (!f.dbStrategyConfig) f.dbStrategyConfig = {};
+      const hrSideEl = card.querySelector("#hrSide");
+      if (hrSideEl) f.dbStrategyConfig.side = hrSideEl.value;
+      const hrChanceEl = card.querySelector("#hrChance");
+      if (hrChanceEl) f.dbStrategyConfig.chance = parseFloat(hrChanceEl.value);
+      const hrBaseEl = card.querySelector("#hrBase");
+      if (hrBaseEl) f.dbStrategyConfig.base_bet_fraction = parseFloat(hrBaseEl.value);
+      const hrMaxBetEl = card.querySelector("#hrMaxBet");
+      if (hrMaxBetEl) f.dbStrategyConfig.max_bet_fraction = parseFloat(hrMaxBetEl.value);
+      
+      const hrLadderEl = card.querySelector("#hrLadder");
+      if (hrLadderEl) f.dbStrategyConfig.max_ladder_depth = parseInt(hrLadderEl.value);
+      
+      const hrHistoryEl = card.querySelector("#hrHistory");
+      if (hrHistoryEl) f.dbStrategyConfig.history_window = parseInt(hrHistoryEl.value);
+      
+      // Time-Accumulator Mapping
+      if (!f.dbTimeAccumulatorConfig) f.dbTimeAccumulatorConfig = {};
+      const taSideEl = card.querySelector("#taSide");
+      if (taSideEl) f.dbTimeAccumulatorConfig.side = taSideEl.value;
+      const taChanceEl = card.querySelector("#taChance");
+      if (taChanceEl) f.dbTimeAccumulatorConfig.chance = parseFloat(taChanceEl.value);
+      const taMinFracEl = card.querySelector("#taMinFrac");
+      if (taMinFracEl) f.dbTimeAccumulatorConfig.min_bet_fraction = parseFloat(taMinFracEl.value);
+      const taMaxFracEl = card.querySelector("#taMaxFrac");
+      if (taMaxFracEl) f.dbTimeAccumulatorConfig.max_bet_fraction = parseFloat(taMaxFracEl.value);
+      const taSeedEl = card.querySelector("#taSeed");
+      if (taSeedEl) f.dbTimeAccumulatorConfig.safety_floor_pct = parseFloat(taSeedEl.value);
+
+      const fwdEl = card.querySelector("#fwd");
+      if (fwdEl) f.wdEnabled = fwdEl.checked;
+      
+      const fwdthEl = card.querySelector("#fwdth");
+      if (fwdthEl) {
+        const newVal = fwdthEl.value.trim();
+        if (newVal !== f.wdThreshold) {
+          f.wdThreshold = newVal;
+          f.wdThresholdIsManual = true; // Mark as manual once user edits
+        }
+      }
+      
+      const fwdaddrEl = card.querySelector("#fwdaddr");
+      if (fwdaddrEl) f.wdAddress = fwdaddrEl.value.trim();
 
       triggerAutoSave(el.type === 'checkbox' ? 0 : 1000);
     });
@@ -401,8 +769,11 @@ function closeModal() {
 
 document.getElementById("modalClose").onclick = closeModal;
 document.getElementById("modalSaveBtn").onclick = async () => {
-  await saveBtn.onclick(); 
-  closeModal();
+  try {
+    await saveBtn.onclick(); 
+  } finally {
+    closeModal();
+  }
 };
 
 window.onclick = (event) => {
@@ -474,6 +845,12 @@ stopBtn.onclick = () => {
   await refreshStatus();
   setInterval(refreshStatus, 1000);
   
+  // Universal Auto-Save: Instant persistence for all settings inputs
+  document.querySelectorAll("#tab-settings input, #tab-settings select").forEach(el => {
+    const event = (el.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input';
+    el.addEventListener(event, () => triggerAutoSave(el.type === 'checkbox' ? 0 : 1000));
+  });
+
   // Heartbeat: Signal to background that configuration is active
   try { chrome.runtime.connect({ name: "popup" }); } catch (err) {}
 })();

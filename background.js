@@ -140,6 +140,7 @@ async function stopAllActivity() {
 // activeTabs = { [tabId]: { faucetUrl, phase, wdAddress? } }
 
 async function checkAndRun(forceAll = false) {
+  const s = await getSettings();
   if (isConfiguring && !forceAll) {
     console.log("[Faucet] Skipping automated check: Configuration in progress...");
     return; 
@@ -178,6 +179,11 @@ async function checkAndRun(forceAll = false) {
       delete activeTabs[id]; 
       stateDirty = true;
       console.log(`[Faucet] Removed stale tab ${id} from activeTabs`);
+      continue;
+    }
+
+    // Protection: Never timeout manual betting/dice sessions
+    if (entry?.faucetUrl?.includes("#manual") || entry?.phase?.includes("dice")) {
       continue;
     }
 
@@ -361,10 +367,25 @@ async function checkAndRun(forceAll = false) {
 
 async function closeTab(tabId) {
   const { activeTabs = {}, settings = {} } = await chrome.storage.local.get(["activeTabs", "settings"]);
+  const entry = activeTabs[tabId];
+  
+  // Protection: Never close manual tabs automatically
+  if (entry?.faucetUrl?.includes("#manual")) {
+    console.log("[Faucet] Ignoring close request for manual betting tab", tabId);
+    return;
+  }
+
   delete activeTabs[tabId];
   const running = settings.enabled !== false;
   await chrome.storage.local.set({ activeTabs, running });
-  try { await chrome.tabs.remove(tabId); } catch (_) {}
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab && tab.url.includes("#manual")) {
+      console.log("[Faucet] Safety check: ignoring close for manual URL", tab.url);
+      return;
+    }
+    await chrome.tabs.remove(tabId);
+  } catch (_) {}
   console.log("[Faucet] Tab", tabId, "closed. Remaining active:", Object.keys(activeTabs).length);
 }
 
@@ -422,43 +443,30 @@ async function dispatchNativeClick(tabId, x, y) {
 // ── Message handling ─────────────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-
-  // Sync: focus-tab
+  // Sync messages that don't need async
   if (msg.type === "focus-tab") {
     if (sender.tab?.id) chrome.tabs.update(sender.tab.id, { active: true });
-    return;
+    sendResponse({ ok: true });
+    return false;
   }
 
-  // Handle async messages separately to avoid lint errors
+  // Async messages
   (async () => {
     try {
-      // Sync: check-plugin-tab
       if (msg.type === "check-plugin-tab") {
         const { activeTabs = {} } = await chrome.storage.local.get("activeTabs");
         const isManual = sender.tab?.url && (sender.tab.url.includes("#manual") || sender.tab.url.includes("manualMode=true"));
         const isReady = isManual || (!!sender.tab && !!activeTabs[sender.tab.id]);
         sendResponse({ yes: isReady });
-        return;
-      }
-
-      // Sync: get-withdraw-info
-      if (msg.type === "get-withdraw-info") {
+      } else if (msg.type === "get-withdraw-info") {
         const d = await chrome.storage.local.get("activeTabs");
         const tab = (d.activeTabs || {})[sender.tab?.id];
         sendResponse({ isWithdrawTab: tab?.phase === "withdraw", address: tab?.wdAddress || "" });
-        return;
-      }
-
-      // Sync: get-tab-state
-      if (msg.type === "get-tab-state") {
+      } else if (msg.type === "get-tab-state") {
         const d = await chrome.storage.local.get("activeTabs");
         const tab = (d.activeTabs || {})[sender.tab?.id];
         sendResponse({ tabState: tab || null });
-        return;
-      }
-
-      // Async: native-click
-      if (msg.type === "native-click") {
+      } else if (msg.type === "native-click") {
         const tabId = sender.tab?.id;
         if (!tabId) {
           sendResponse({ ok: false, error: "no-tab" });
@@ -467,11 +475,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         chrome.tabs.update(tabId, { active: true }).catch(() => {});
         await dispatchNativeClick(tabId, msg.x, msg.y);
         sendResponse({ ok: true });
-        return;
+      } else {
+        // Fallback for popup/internal messages
+        await handleMessage(msg, sender);
+        sendResponse({ ok: true });
       }
-
-      // Default async handler
-      await handleMessage(msg, sender);
     } catch (err) {
       console.error("[Faucet:BG Message Error]", err);
     }
@@ -784,3 +792,64 @@ function isNewerVersion(remote, local) {
   }
   return false;
 }
+
+// ── Withdrawal Threshold Sync ──────────────────────────────────────────────────
+async function checkWithdrawalMinimums() {
+  console.log("[Faucet] Checking withdrawal minimums...");
+  const s = await getSettings();
+  if (!s.enabled) return;
+
+  let changed = false;
+  for (const f of s.faucets) {
+    if (f.active === false) continue;
+    if (f.wdThresholdIsManual) continue;
+
+    try {
+      const baseUrl = f.url.replace(/\/$/, '');
+      const testUrl = `${baseUrl}/withdrawal.php?_t=${Date.now()}`;
+      const resp = await fetch(testUrl, { credentials: 'include', redirect: 'follow', cache: 'no-cache' });
+      if (!resp.ok) continue;
+
+      const html = await resp.text();
+      let detectedMin = null;
+      for (const p of SCRAPE_WD_MIN_PATTERNS) {
+        const m = html.match(p);
+        if (m && m[1]) {
+          detectedMin = m[1].replace(',', '');
+          break;
+        }
+      }
+      
+      if (detectedMin) {
+        f.wdMinDetected = detectedMin; // Always update detected value
+        
+        if (!f.wdThresholdIsManual && f.wdThreshold !== detectedMin) {
+          console.log(`[Faucet] Updating threshold for ${f.url}: ${f.wdThreshold} -> ${detectedMin}`);
+          f.wdThreshold = detectedMin;
+          changed = true;
+        } else if (f.wdThresholdIsManual) {
+          changed = true; // Still save if we updated wdMinDetected
+        }
+      }
+    } catch (e) {
+      console.warn(`[Faucet] Failed to fetch min for ${f.url}:`, e.message);
+    }
+  }
+
+  if (changed) {
+    await chrome.storage.local.set({ settings: s });
+  }
+}
+
+// Initial checks
+checkProtocolUpdates();
+checkWithdrawalMinimums();
+
+// Set alarms for periodic checks
+chrome.alarms.create("protocol-sync", { periodInMinutes: 60 });
+chrome.alarms.create("threshold-sync", { periodInMinutes: 30 });
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === "protocol-sync") checkProtocolUpdates();
+  if (alarm.name === "threshold-sync") checkWithdrawalMinimums();
+});

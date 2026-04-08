@@ -2,12 +2,7 @@
 
 function scrapeMinimumWithdrawal() {
   const textContent = document.body.innerText;
-  const patterns = [
-    /minimum\s+(?:withdrawal|withdraw|amount)[:\s]+([\d.]+)/i,
-    /min[:\s]+([\d.]+)/i,
-    /withdraw\s+min[:\s]+([\d.]+)/i,
-    /least[:\s]+([\d.]+)\s+\w+\s+to\s+withdraw/i
-  ];
+  const patterns = SCRAPE_WD_MIN_PATTERNS;
 
   for (const pattern of patterns) {
     const match = textContent.match(pattern);
