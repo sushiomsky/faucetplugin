@@ -9,11 +9,19 @@
     "storage",
     "scripting",
     "debugger",
+    "identity",
     "cookies"
   ],
   "host_permissions": [
-    "<all_urls>"
+    "<all_urls>",
+    "https://www.googleapis.com/*"
   ],
+  "oauth2": {
+    "client_id": "REPLACE_WITH_YOUR_CLIENT_ID.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/drive.file"
+    ]
+  },
   "icons": {
     "16": "icons/icon_16.png",
     "48": "icons/icon_48.png",

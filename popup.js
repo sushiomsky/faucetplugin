@@ -393,6 +393,15 @@ async function loadSettings() {
       }
     }));
 
+    // GDrive Sync State
+    const { googleDriveConnected, autoSyncDrive } = await chrome.storage.local.get(["googleDriveConnected", "autoSyncDrive"]);
+    if (googleDriveConnected) {
+      document.getElementById("gdriveStatus").textContent = "Status: Connected to Google Drive";
+      document.getElementById("connectDriveBtn").style.display = "none";
+      document.getElementById("syncControls").style.display = "flex";
+      document.getElementById("autoSyncDrive").checked = autoSyncDrive === true;
+    }
+
     // Attach global auto-save listeners
     document.querySelectorAll("#tab-settings input, #tab-settings select").forEach(el => {
       const event = (el.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input';
@@ -933,6 +942,77 @@ document.getElementById("resetBtn").onclick = async () => {
   } catch (err) {
     console.error("[Popup] Reset failed:", err);
   }
+};
+
+// ── Google Drive Sync Handlers ──────────────────────────────────────────
+const connectBtn = document.getElementById("connectDriveBtn");
+const gdriveStatus = document.getElementById("gdriveStatus");
+const syncControls = document.getElementById("syncControls");
+
+if (connectBtn) {
+  connectBtn.onclick = async () => {
+    try {
+      connectBtn.disabled = true;
+      connectBtn.textContent = "Connecting...";
+      await window.GoogleDriveSync.getAuthToken(true);
+      await chrome.storage.local.set({ googleDriveConnected: true });
+      location.reload();
+    } catch (err) {
+      console.error("[Popup] GDrive Connect failed:", err);
+      alert("Failed to connect to Google Drive: " + (err.message || err));
+      connectBtn.disabled = false;
+      connectBtn.textContent = "Connect Google Drive";
+    }
+  };
+}
+
+document.getElementById("pushDriveBtn").onclick = async () => {
+  const btn = document.getElementById("pushDriveBtn");
+  try {
+    btn.disabled = true;
+    btn.textContent = "Pushing...";
+    const { settings } = await chrome.storage.local.get("settings");
+    await window.GoogleDriveSync.uploadSettings(settings);
+    alert("Settings pushed to Google Drive successfully!");
+  } catch (err) {
+    console.error("[Popup] Push failed:", err);
+    alert("Push failed: " + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Push Local → Cloud";
+  }
+};
+
+document.getElementById("pullDriveBtn").onclick = async () => {
+  const btn = document.getElementById("pullDriveBtn");
+  if (!confirm("This will overwrite ALL local settings with data from Google Drive. Continue?")) return;
+  try {
+    btn.disabled = true;
+    btn.textContent = "Pulling...";
+    const remote = await window.GoogleDriveSync.downloadSettings();
+    if (!remote) {
+      alert("No settings file found on Google Drive.");
+      return;
+    }
+    
+    // Validate remote settings (basic check)
+    if (!remote.faucets) throw new Error("Invalid remote configuration.");
+
+    await chrome.storage.local.set({ settings: remote });
+    chrome.runtime.sendMessage({ type: "save-settings", settings: remote });
+    alert("Settings pulled successfully! Reloading...");
+    location.reload();
+  } catch (err) {
+    console.error("[Popup] Pull failed:", err);
+    alert("Pull failed: " + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Pull Cloud → Local";
+  }
+};
+
+document.getElementById("autoSyncDrive").onchange = (e) => {
+  chrome.storage.local.set({ autoSyncDrive: e.target.checked });
 };
 
 (async () => {
