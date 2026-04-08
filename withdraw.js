@@ -7,8 +7,8 @@ function scrapeMinimumWithdrawal() {
   for (const pattern of patterns) {
     const match = textContent.match(pattern);
     if (match && match[1]) {
-      const val = parseFloat(match[1]);
-      if (Number.isFinite(val) && val > 0) {
+      const val = parseNumericValue(match[1]);
+      if (val != null && val > 0) {
         log(`✓ Scraped minimum withdrawal: ${val}`);
         return val;
       }

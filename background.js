@@ -504,10 +504,8 @@ chrome.runtime.onInstalled.addListener(async () => {
     await chrome.storage.local.set({ settings: DEFAULT_SETTINGS });
   }
 
-  // If setup not complete, open setup wizard
-  if (!setupComplete) {
-    chrome.tabs.create({ url: chrome.runtime.getURL("setup.html") });
-  }
+  // Removed auto-opening setup.html on install. 
+  // Setup will now be triggered only when the user opens the popup for the first time.
 
   const s = await getSettings();
   // Clear any stale state from previous session
@@ -599,10 +597,34 @@ checkProtocolUpdates(); // Initial fetch
 async function handleMessage(msg, sender) {
   // ── Scraped minimum withdrawal ──
   if (msg.type === "scraped-min-wd") {
-    const { minWdThresholds = {} } = await chrome.storage.local.get("minWdThresholds");
+    const { minWdThresholds = {}, settings = {} } = await chrome.storage.local.get(["minWdThresholds", "settings"]);
     const host = hostKey(msg.url);
     if (host && msg.value) {
       minWdThresholds[host] = msg.value;
+      
+      // Auto-update faucet config if detected min is higher than current threshold AND not manual
+      if (settings.faucets) {
+        let changed = false;
+        settings.faucets = settings.faucets.map(f => {
+          if (hostKey(f.url) === host) {
+            const currentTh = parseFloat(f.wdThreshold);
+            const newMinStr = String(msg.value);
+            if (!f.wdThresholdIsManual && (!Number.isFinite(currentTh) || currentTh < msg.value)) {
+              if (f.wdThreshold !== newMinStr) {
+                f.wdThreshold = newMinStr;
+                changed = true;
+              }
+            }
+            f.wdMinDetected = newMinStr; // Always update detected min cache
+          }
+          return f;
+        });
+        if (changed) {
+          await chrome.storage.local.set({ settings });
+          console.log(`[Faucet] Auto-enforced new min threshold for ${host}: ${msg.value}`);
+        }
+      }
+      
       await chrome.storage.local.set({ minWdThresholds });
       console.log(`[Faucet] Stored min threshold for ${host}: ${msg.value}`);
     }
@@ -676,7 +698,7 @@ async function handleMessage(msg, sender) {
   const tabId = sender.tab?.id;
   if (!tabId) return;
 
-  const { activeTabs = {}, claimHistory = {} } = await chrome.storage.local.get(["activeTabs", "claimHistory"]);
+  const { activeTabs = {}, claimHistory = {}, minWdThresholds = {} } = await chrome.storage.local.get(["activeTabs", "claimHistory", "minWdThresholds"]);
   const tabData = activeTabs[tabId];
   if (!tabData) return; // not our tab
 
@@ -708,9 +730,12 @@ async function handleMessage(msg, sender) {
 
       // Unified Withdrawal Threshold Check (Dice or Standard)
       const threshold = parseFloat(cfg?.wdThreshold);
-      const isAboveThreshold = !isNaN(threshold) && threshold > 0 && msg.balance >= threshold;
-
-      if (cfg?.wdEnabled && cfg?.wdAddress && isAboveThreshold) {
+      const detectedMin = parseFloat(cfg?.wdMinDetected || minWdThresholds[hostKey(tabData.faucetUrl)] || "0");
+      
+      const isAboveUserThreshold = !isNaN(threshold) && threshold > 0 && msg.balance >= threshold;
+      const isAboveSiteMin = !isNaN(detectedMin) && msg.balance >= detectedMin;
+      
+      if (cfg?.wdEnabled && cfg?.wdAddress && isAboveUserThreshold && isAboveSiteMin) {
         log(`[Faucet] Above Threshold (${threshold}). Moving to withdrawal.`);
         activeTabs[tabId] = { ...tabData, phase: "withdraw", wdAddress: cfg.wdAddress, phaseStartedAt: Date.now() };
         await chrome.storage.local.set({ activeTabs });

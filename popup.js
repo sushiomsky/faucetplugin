@@ -835,6 +835,106 @@ stopBtn.onclick = () => {
   chrome.runtime.sendMessage({ type: "stop-all-activity" });
 };
 
+// ── Export / Import / Reset ───────────────────────────────────────────────
+document.getElementById("exportBtn").onclick = async () => {
+  try {
+    // Ensure current UI state is saved to storage before exporting
+    if (typeof saveBtn !== "undefined" && saveBtn.onclick) {
+      await saveBtn.onclick();
+    }
+    const { settings } = await chrome.storage.local.get("settings");
+    if (!settings) {
+      alert("No configuration found to export.");
+      return;
+    }
+
+    // Decrypt sensitive fields for the export file so it's a "clean" backup
+    if (settings.faucets) {
+      settings.faucets = await Promise.all(settings.faucets.map(async f => {
+        let u = f.username || "", p = f.password || "";
+        if (typeof CryptoUtils !== "undefined" && u.length > 30) {
+          try { u = await CryptoUtils.decrypt(u); } catch(e){}
+          try { p = await CryptoUtils.decrypt(p); } catch(e){}
+        }
+        return { ...f, username: u, password: p };
+      }));
+    }
+
+    const blob = new Blob([JSON.stringify(settings, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `faucetpick-config-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error("[Popup] Export failed:", err);
+    alert("Export failed: " + err.message);
+  }
+};
+
+document.getElementById("importBtn").onclick = () => {
+  document.getElementById("importFile").click();
+};
+
+document.getElementById("importFile").onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async (event) => {
+    try {
+      const imported = JSON.parse(event.target.result);
+      if (!imported.faucets) throw new Error("Invalid config: No faucets found.");
+
+      // Re-encrypt if needed (saveBtn logic)
+      if (imported.faucets) {
+        imported.faucets = await Promise.all(imported.faucets.map(async f => {
+          let u = f.username || "", p = f.password || "";
+          if (typeof CryptoUtils !== "undefined" && u && u.length < 30) {
+            try { u = await CryptoUtils.encrypt(u); } catch(e){}
+            try { p = await CryptoUtils.encrypt(p); } catch(e){}
+          }
+          return { ...f, username: u, password: p };
+        }));
+      }
+
+      await chrome.storage.local.set({ settings: imported });
+      chrome.runtime.sendMessage({ type: "save-settings", settings: imported });
+      
+      alert("Configuration imported successfully! Reloading...");
+      window.location.reload();
+    } catch (err) {
+      console.error("[Popup] Import failed:", err);
+      alert("Import failed: " + err.message);
+    }
+  };
+  reader.readAsText(file);
+};
+
+document.getElementById("resetBtn").onclick = async () => {
+  if (!confirm("Are you sure you want to reset ALL settings to factory defaults? This cannot be undone.")) return;
+  try {
+    const defaults = makeFaucetDefaults();
+    const settings = {
+        enabled: false,
+        botName: "Faucet Bot",
+        longBreakEnabled: false,
+        longBreakFrequency: 5,
+        longBreakMin: 65,
+        longBreakMax: 80,
+        telegram: { enabled: false, botToken: "", chatId: "" },
+        faucets: defaults
+    };
+    await chrome.storage.local.clear();
+    await chrome.storage.local.set({ settings, setupComplete: true });
+    chrome.runtime.sendMessage({ type: "save-settings", settings });
+    window.location.reload();
+  } catch (err) {
+    console.error("[Popup] Reset failed:", err);
+  }
+};
+
 (async () => {
   const { setupComplete } = await chrome.storage.local.get("setupComplete");
   if (!setupComplete) {

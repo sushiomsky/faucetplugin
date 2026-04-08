@@ -195,7 +195,13 @@ window.addEventListener('DOMContentLoaded', () => {
       });
       
       chrome.runtime.sendMessage({ type: "save-settings", settings });
-      window.location.href = "popup.html";
+      
+      if (window.innerWidth > 600) {
+        window.close();
+        setTimeout(() => { if (!window.closed) window.location.href = "popup.html"; }, 100);
+      } else {
+        window.location.href = "popup.html";
+      }
     } catch (err) {
       console.error("Setup failed:", err);
     }
@@ -215,7 +221,12 @@ window.addEventListener('DOMContentLoaded', () => {
         setupComplete: true 
       });
       
-      window.location.href = "popup.html";
+      if (window.innerWidth > 600) {
+        window.close();
+        setTimeout(() => { if (!window.closed) window.location.href = "popup.html"; }, 100);
+      } else {
+        window.location.href = "popup.html";
+      }
     } catch (err) {
       console.error("Skip setup failed:", err);
     }

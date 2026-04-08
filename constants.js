@@ -12,11 +12,12 @@ const DEFAULT_DB_STRATEGY                  = DICE_STRATEGY_ALL_IN_001;
 const DEFAULT_DB_SIDE                      = "higher";
 const DEFAULT_DB_CHANCE                    = "1";
 const SCRAPE_WD_MIN_PATTERNS               = [
-  /minimum\s+(?:withdrawal|withdraw|amount)(?:\s+amount)?[:\s]+([\d.]+)/i,
-  /min[:\s]+([\d.]+)/i,
-  /withdraw\s+min[:\s]+([\d.]+)/i,
-  /least[:\s]+([\d.]+)\s+\w+\s+to\s+withdraw/i,
-  /Minimum\s+withdrawal\s+amount:\s+<b>([\d.]+).*?<\/b>/i
+  /minimum\s+(?:withdrawal|withdraw|amount)(?:\s+amount)?[:\s\-]+([\d,.]+)/i,
+  /min[:\s\-]+([\d,.]+)/i,
+  /withdraw\s+min[:\s\-]+([\d,.]+)/i,
+  /(?:at least|minimum of)[:\s]+([\d,.]+)\s*[A-Z]{3,}/i,
+  /Minimum\s+withdrawal\s+amount[:\s]+<b>([\d,.]+).*?<\/b>/i,
+  /Minimum\s+Withdrawal[\s:]+([\d,.]+)/i
 ];
 
 // ── Per-host withdrawal thresholds (≈ $5 USD equivalent) ─────────────────────

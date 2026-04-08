@@ -134,8 +134,10 @@
       
       <div style="display:flex; gap:10px; margin-top:20px; opacity:0.6;">
         <button id="resetBtn" style="flex:1; background:none; border:1px solid var(--status-err); color:var(--status-err); border-radius:10px; padding:8px; font-size:10px; cursor:pointer;">Reset Bot</button>
-        <button id="exportBtn" style="flex:1; background:none; border:1px solid var(--text-dim); color:var(--text-dim); border-radius:10px; padding:8px; font-size:10px; cursor:pointer;">Export Config</button>
+        <button id="exportBtn" style="flex:1; background:none; border:1px solid var(--text-dim); color:var(--text-dim); border-radius:10px; padding:8px; font-size:10px; cursor:pointer;">Export</button>
+        <button id="importBtn" style="flex:1; background:none; border:1px solid var(--text-dim); color:var(--text-dim); border-radius:10px; padding:8px; font-size:10px; cursor:pointer;">Import</button>
       </div>
+      <input type="file" id="importFile" style="display:none;" accept=".json">
     </div>
   </section>
 </main>
@@ -174,6 +176,7 @@
   </div>
 </div>
 
+<div class="save-indicator" id="saveMsg"></div>
 <script src="constants.js"></script>
 <script src="crypto-utils.js"></script>
 <script src="popup.js"></script>
