@@ -1,4 +1,4 @@
-importScripts('constants.js', 'cloud-sync.js');
+importScripts('constants.js');
 const ALARM_NAME = "faucet-tick"; 
 const SITE_PHASE_TIMEOUT_MS = 20 * 60 * 1000;
 const DEBUG = false;
@@ -647,14 +647,6 @@ async function handleMessage(msg, sender) {
     await chrome.storage.local.set({ settings: { ...old, ...msg.settings } });
     const s = await getSettings();
     
-    // Auto-Sync to Google Drive if enabled
-    const { autoSyncDrive, googleDriveConnected } = await chrome.storage.local.get(["autoSyncDrive", "googleDriveConnected"]);
-    if (googleDriveConnected && autoSyncDrive) {
-      const gsync = (typeof window !== 'undefined') ? window.GoogleDriveSync : (typeof self !== 'undefined' ? self.GoogleDriveSync : null);
-      if (gsync) {
-        gsync.uploadSettings(s).catch(err => console.error("[GDrive] Auto-Sync failed:", err));
-      }
-    }
 
     if (s.enabled) {
       await chrome.storage.local.set({ running: true });

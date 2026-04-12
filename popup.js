@@ -122,6 +122,10 @@ async function refreshStatus() {
     else perc = 100;
     const offset = 201 - (2.01 * perc);
 
+    // Live balance from scraper takes priority over historical log
+    const liveBalance = faucetBalances[f.url];
+    const displayBalance = liveBalance || (lastLog?.balance ? lastLog.balance.toFixed(4) : "–");
+
     const card = document.createElement("div");
     card.className = "site-card-premium" + (tabEntry ? " busy" : "");
     card.innerHTML = `
@@ -136,7 +140,7 @@ async function refreshStatus() {
       <div class="card-meta">
         <div class="card-site-name">${host}</div>
         <div class="card-site-timer">${timeLeft > 0 ? fmtCountdown(timeLeft) : "READY"}</div>
-        <div class="card-site-balance">${lastLog?.balance ? lastLog.balance.toFixed(4) : "–"}</div>
+        <div class="card-site-balance">${displayBalance}</div>
       </div>
     `;
     card.onclick = () => {
@@ -304,27 +308,37 @@ async function fetchMinWithdrawal(faucet) {
 }
 
 async function fetchBalance(faucet) {
-  try {
-    const baseUrl = faucet.url.replace(/\/$/, '');
-    const testUrl = `${baseUrl}/faucet.php?_t=${Date.now()}`;
-    const resp = await fetch(testUrl, { credentials: 'include', redirect: 'follow', cache: 'no-cache' });
-    const html = await resp.text();
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    
-    // Scrape balances using generic selectors
-    const selectors = ["#game_dice .user_balance", ".user_balance", ".balance-value", "#balance", ".bal-amt", ".val", "b"];
-    for (const sel of selectors) {
-      const els = doc.querySelectorAll(sel);
-      for (const el of els) {
-        const text = el.textContent.trim();
-        // Check for specific coin values (e.g., 0.000123)
-        const matches = text.match(/([0-9]+\.[0-9]{4,})/);
-        if (matches) return matches[1];
+  const baseUrl = faucet.url.replace(/\/$/, '');
+  const pages = ["/faucet.php", "/index.php", "/"];
+  
+  for (const page of pages) {
+    try {
+      const testUrl = `${baseUrl}${page}?_t=${Date.now()}`;
+      const resp = await fetch(testUrl, { credentials: 'include', redirect: 'follow', cache: 'no-cache' });
+      if (!resp.ok) continue;
+      
+      const html = await resp.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      
+      const selectors = [
+        "#game_dice .user_balance", ".user_balance", ".user-balance", ".header-balance", 
+        ".balance-value", "#balance", ".bal-amt", ".val", "b",
+        "[class*='balance' i]", "[id*='balance' i]"
+      ];
+      
+      for (const sel of selectors) {
+        const els = doc.querySelectorAll(sel);
+        for (const el of els) {
+          const text = el.textContent.trim();
+          const cleaned = text.replace(/,/g, "");
+          const matches = cleaned.match(/-?\d+(?:\.\d+)?/);
+          if (matches) return matches[0];
+        }
       }
-    }
-    return null;
-  } catch (e) { return null; }
+    } catch (e) { continue; }
+  }
+  return null;
 }
 
 function renderHistory(log) {
@@ -393,14 +407,6 @@ async function loadSettings() {
       }
     }));
 
-    // GDrive Sync State
-    const { googleDriveConnected, autoSyncDrive } = await chrome.storage.local.get(["googleDriveConnected", "autoSyncDrive"]);
-    if (googleDriveConnected) {
-      document.getElementById("gdriveStatus").textContent = "Status: Connected to Google Drive";
-      document.getElementById("connectDriveBtn").style.display = "none";
-      document.getElementById("syncControls").style.display = "flex";
-      document.getElementById("autoSyncDrive").checked = autoSyncDrive === true;
-    }
 
     // Attach global auto-save listeners
     document.querySelectorAll("#tab-settings input, #tab-settings select").forEach(el => {
@@ -944,76 +950,6 @@ document.getElementById("resetBtn").onclick = async () => {
   }
 };
 
-// ── Google Drive Sync Handlers ──────────────────────────────────────────
-const connectBtn = document.getElementById("connectDriveBtn");
-const gdriveStatus = document.getElementById("gdriveStatus");
-const syncControls = document.getElementById("syncControls");
-
-if (connectBtn) {
-  connectBtn.onclick = async () => {
-    try {
-      connectBtn.disabled = true;
-      connectBtn.textContent = "Connecting...";
-      await window.GoogleDriveSync.getAuthToken(true);
-      await chrome.storage.local.set({ googleDriveConnected: true });
-      location.reload();
-    } catch (err) {
-      console.error("[Popup] GDrive Connect failed:", err);
-      alert("Failed to connect to Google Drive: " + (err.message || err));
-      connectBtn.disabled = false;
-      connectBtn.textContent = "Connect Google Drive";
-    }
-  };
-}
-
-document.getElementById("pushDriveBtn").onclick = async () => {
-  const btn = document.getElementById("pushDriveBtn");
-  try {
-    btn.disabled = true;
-    btn.textContent = "Pushing...";
-    const { settings } = await chrome.storage.local.get("settings");
-    await window.GoogleDriveSync.uploadSettings(settings);
-    alert("Settings pushed to Google Drive successfully!");
-  } catch (err) {
-    console.error("[Popup] Push failed:", err);
-    alert("Push failed: " + err.message);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "Push Local → Cloud";
-  }
-};
-
-document.getElementById("pullDriveBtn").onclick = async () => {
-  const btn = document.getElementById("pullDriveBtn");
-  if (!confirm("This will overwrite ALL local settings with data from Google Drive. Continue?")) return;
-  try {
-    btn.disabled = true;
-    btn.textContent = "Pulling...";
-    const remote = await window.GoogleDriveSync.downloadSettings();
-    if (!remote) {
-      alert("No settings file found on Google Drive.");
-      return;
-    }
-    
-    // Validate remote settings (basic check)
-    if (!remote.faucets) throw new Error("Invalid remote configuration.");
-
-    await chrome.storage.local.set({ settings: remote });
-    chrome.runtime.sendMessage({ type: "save-settings", settings: remote });
-    alert("Settings pulled successfully! Reloading...");
-    location.reload();
-  } catch (err) {
-    console.error("[Popup] Pull failed:", err);
-    alert("Pull failed: " + err.message);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "Pull Cloud → Local";
-  }
-};
-
-document.getElementById("autoSyncDrive").onchange = (e) => {
-  chrome.storage.local.set({ autoSyncDrive: e.target.checked });
-};
 
 (async () => {
   const { setupComplete } = await chrome.storage.local.get("setupComplete");

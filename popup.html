@@ -112,24 +112,6 @@
         </div>
       </div>
 
-      <div class="config-group">
-        <div class="group-header"><span>☁️</span> Google Drive Sync</div>
-        <div class="input-card">
-          <div id="gdriveStatus" style="font-size:10px; color:var(--text-dim); margin-bottom:10px;">Status: Not Connected</div>
-          <button id="connectDriveBtn" style="width:100%; background:var(--glass-border); border:1px solid var(--glass-border); color:#fff; padding:10px; border-radius:12px; font-size:11px; cursor:pointer; font-weight:600; margin-bottom:8px;">Connect Google Drive</button>
-          
-          <div id="syncControls" style="display:none; flex-direction:column; gap:8px;">
-            <div style="display:flex; gap:10px;">
-              <button id="pushDriveBtn" style="flex:1; background:rgba(74,144,226,0.1); border:1px solid rgba(74,144,226,0.2); color:#4a90e2; padding:8px; border-radius:10px; font-size:10px; cursor:pointer; font-weight:700;">Push Local → Cloud</button>
-              <button id="pullDriveBtn" style="flex:1; background:rgba(0,255,136,0.1); border:1px solid rgba(0,255,136,0.2); color:var(--status-ok); padding:8px; border-radius:10px; font-size:10px; cursor:pointer; font-weight:700;">Pull Cloud → Local</button>
-            </div>
-            <div class="toggle-switch" style="margin-top:5px;">
-              <span class="label" style="font-size:9px;">Auto-Sync Changes</span>
-              <input type="checkbox" id="autoSyncDrive">
-            </div>
-          </div>
-        </div>
-      </div>
 
       <div class="config-group">
         <div class="group-header"><span>📱</span> Telegram Notifications</div>
@@ -198,7 +180,6 @@
 <div class="save-indicator" id="saveMsg"></div>
 <script src="constants.js"></script>
 <script src="crypto-utils.js"></script>
-<script src="cloud-sync.js"></script>
 <script src="popup.js"></script>
 </body>
 </html>

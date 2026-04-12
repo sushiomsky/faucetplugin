@@ -52,9 +52,12 @@ const SiteSelectors = {
     }
   },
 
-  "litepick.io": {
-    balance: [".user_balance", ".header-balance"]
-  },
+  "litepick.io": { balance: [".user_balance", ".header-balance"] },
+  "bnbpick.io":  { balance: [".user_balance", ".header-balance"] },
+  "solpick.io":  { balance: [".user_balance", ".header-balance"] },
+  "dogepick.io": { balance: [".user_balance", ".header-balance"] },
+  "tronpick.io": { balance: [".user_balance", ".header-balance"] },
+  "polpick.io":  { balance: [".user_balance", ".header-balance"] },
 
   "generic": {
     // ── Global ──
