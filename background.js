@@ -399,6 +399,9 @@ async function dispatchNativeClick(tabId, x, y) {
   let attached = false;
 
   try {
+    if (!chrome.debugger) {
+      throw new Error("debugger-api-not-supported-in-this-browser");
+    }
     await chrome.debugger.attach(target, protocolVersion);
     attached = true;
   } catch (err) {

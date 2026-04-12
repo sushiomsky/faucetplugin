@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "FaucetPick: Automated Faucet Claims",
+  "version": "2.7.2",
+  "description": "Premium automation for pick-style faucets. Set-and-forget claiming for litepick, dogepick, solpick and more.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "faucetpick@sushiomsky",
+      "strict_min_version": "109.0"
+    }
+  },
+  "permissions": [
+    "tabs",
+    "alarms",
+    "storage",
+    "scripting",
+    "cookies"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "icons": {
+    "16": "icons/icon_16.png",
+    "48": "icons/icon_48.png",
+    "128": "icons/icon_128.png"
+  },
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "FaucetPick",
+    "default_icon": {
+      "16": "icons/icon_16.png",
+      "48": "icons/icon_48.png",
+      "128": "icons/icon_128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": ["constants.js", "crypto-utils.js", "selectors.js", "utils.js", "captcha.js", "auth.js", "dice.js", "faucet.js", "withdraw.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
