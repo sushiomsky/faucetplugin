@@ -1,5 +1,5 @@
 {
-  "version": "2.7.2",
-  "download_url": "https://github.com/sushiomsky/faucetplugin/raw/main/faucet-pro-v2.7.2.zip",
-  "changelog": "v2.7.2 — Stabilization & Manual Override Hardening. Resolved race conditions in manual betting, implemented a 20ms human-like typing delay to bypass bot detection, and added a configuration lock to pause automation while settings are open."
+  "version": "2.7.3",
+  "download_url": "https://github.com/sushiomsky/faucetplugin/raw/main/faucet-pro-v2.7.3.zip",
+  "changelog": "v2.7.3 — Bonus Faucet Reliability & Multi-Host Stability. Fixed bonus faucet claiming on Litepick.io by identifying correct containers, decoupled hourly/bonus claims to ensure rewards are collected even on cooldown, and added explicit support for Suipick.io and Tonpick.game."
 }

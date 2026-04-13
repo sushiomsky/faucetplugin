@@ -58,6 +58,9 @@ const SiteSelectors = {
   "dogepick.io": { balance: [".user_balance", ".header-balance"] },
   "tronpick.io": { balance: [".user_balance", ".header-balance"] },
   "polpick.io":  { balance: [".user_balance", ".header-balance"] },
+  "suipick.io":  { balance: [".user_balance", ".header-balance"] },
+  "tonpick.game": { balance: [".user_balance", ".header-balance"] },
+  "bnbpick.io":   { balance: [".user_balance", ".header-balance"] },
 
   "generic": {
     // ── Global ──
@@ -133,9 +136,10 @@ const SiteSelectors = {
       '[data-type="bonus"].faucet-tab', '[data-type="bonus"]', 'div[data-type="bonus"]',
       'a[data-type="bonus"]', '.faucet-tab[data-type="bonus"]', '[data-tab="bonus"]',
       'button[data-tab="bonus"]', '#bonus-tab', '.bonus-tab', 'li[data-type="bonus"]',
-      '[class*="bonus"][class*="tab"]'
+      '#bonus_faucet_tab', '[class*="bonus"][class*="tab"]'
     ],
     faucetBonusContent: [
+      '#bonus_faucet', '#bonus-faucet', '.bonus-faucet',
       '[data-type="bonus"][class*="content"]', '[data-tab="bonus"][class*="content"]',
       '.bonus-content', '[aria-labelledby*="bonus"]', '[class*="tab-pane"]', 
       '[class*="tab-content"]', '.content', '[role="tabpanel"]'
