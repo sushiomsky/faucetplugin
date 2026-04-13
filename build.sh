@@ -11,6 +11,10 @@ ZIP_NAME="faucet-pro-v$VERSION.zip"
 
 echo "🚀 Starting build for FaucetPick v$VERSION..."
 
+# Generate test data (to bypass browser fetch / file:// restrictions)
+echo "window.__MANIFEST__ = $(python3 -c 'import json; print(json.load(open("manifest.json")))')" > tests/manifest_data.js
+echo "window.__VERSION__ = $(python3 -c 'import json; print(json.load(open("version.json")))')" >> tests/manifest_data.js
+
 # Clean old artifacts
 rm -rf "$BUILD_DIR"
 rm -f "$ZIP_NAME"

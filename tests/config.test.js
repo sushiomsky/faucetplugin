@@ -4,40 +4,28 @@
 
 describe('Extension Configuration Sanity', () => {
 
-  itAsync('manifest.json is valid JSON', async () => {
-    try {
-      const resp = await fetch('../manifest.json');
-      const text = await resp.text();
-      JSON.parse(text);
-    } catch (e) {
-      throw new Error(`Failed to parse manifest.json: ${e.message}`);
-    }
+  it('manifest.json data is loaded', () => {
+    assert(window.__MANIFEST__, 'window.__MANIFEST__ must be defined (run build.sh first)');
+    assertEqual(typeof window.__MANIFEST__, 'object', 'Manifest data must be an object');
   });
 
-  itAsync('version.json matches manifest.json version', async () => {
-    const mResp = await fetch('../manifest.json');
-    const manifest = await mResp.json();
-    
-    const vResp = await fetch('../version.json');
-    const version = await vResp.json();
-    
-    assertEqual(manifest.version, version.version, 'Manifest and Version file must match exactly');
+  it('version.json data is loaded', () => {
+    assert(window.__VERSION__, 'window.__VERSION__ must be defined (run build.sh first)');
+    assertEqual(typeof window.__VERSION__, 'object', 'Version data must be an object');
   });
 
-  itAsync('background service worker is NOT a module (for importScripts)', async () => {
-    const resp = await fetch('../manifest.json');
-    const manifest = await resp.json();
-    
-    const bg = manifest.background || {};
+  it('version.json matches manifest.json version', () => {
+    assertEqual(window.__MANIFEST__.version, window.__VERSION__.version, 'Manifest and Version file must match exactly');
+  });
+
+  it('background service worker is NOT a module (for importScripts)', () => {
+    const bg = window.__MANIFEST__.background || {};
     assertEqual(bg.type, undefined, 'Background service_worker must NOT have type: module when using importScripts');
   });
 
-  itAsync('manifest icons use standard underscored naming', async () => {
-    const resp = await fetch('../manifest.json');
-    const manifest = await resp.json();
-    
-    const icons = manifest.icons || {};
-    const actionIcons = (manifest.action && manifest.action.default_icon) || {};
+  it('manifest icons use standard underscored naming', () => {
+    const icons = window.__MANIFEST__.icons || {};
+    const actionIcons = (window.__MANIFEST__.action && window.__MANIFEST__.action.default_icon) || {};
     
     const allPaths = [...Object.values(icons), ...Object.values(actionIcons)];
     for (const path of allPaths) {
@@ -45,11 +33,8 @@ describe('Extension Configuration Sanity', () => {
     }
   });
 
-  itAsync('content_scripts js files are present in right order', async () => {
-      const resp = await fetch('../manifest.json');
-      const manifest = await resp.json();
-      
-      const cs = manifest.content_scripts[0];
+  it('content_scripts js files are present in right order', () => {
+      const cs = window.__MANIFEST__.content_scripts[0];
       assertEqual(cs.js[0], 'constants.js', 'constants.js must be first for shared functions');
       assertEqual(cs.js[1], 'selectors.js', 'selectors.js must be second');
       assertEqual(cs.js[2], 'faucet.js', 'faucet.js must be third');
