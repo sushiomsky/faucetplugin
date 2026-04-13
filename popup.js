@@ -429,14 +429,15 @@ async function loadSettings() {
 
     const storedFaucets = s.faucets || [];
     const storedByUrl = {};
-    for (const f of storedFaucets) { if (f.url) storedByUrl[f.url] = f; }
+    const norm = (u) => u.replace(/\/$/, "").replace(/^https?:\/\//, "").replace(/^www\./, "").toLowerCase();
+    for (const f of storedFaucets) { if (f.url) storedByUrl[norm(f.url)] = f; }
     
     const defaultFaucets = makeFaucetDefaults();
     const allBaseFaucets = [...defaultFaucets, ...(s.customFaucets || [])];
 
     currentFaucets = await Promise.all(allBaseFaucets.map(async def => {
+      const merged = { ...def, ...(storedByUrl[norm(def.url)] || {}) };
       try {
-        const merged = { ...def, ...(storedByUrl[def.url] || {}) };
         let dUser = merged.username || "", dPass = merged.password || "";
         if (typeof CryptoUtils !== "undefined" && dUser && dUser.length > 30) {
           dUser = await CryptoUtils.decrypt(dUser);
@@ -444,8 +445,8 @@ async function loadSettings() {
         }
         return { ...merged, username: dUser, password: dPass };
       } catch (e) {
-        console.warn(`[Popup] Failed to load config for ${def.url}:`, e);
-        return def;
+        console.warn(`[Popup] Failed to decrypt for ${def.url}, preserving encrypted fields:`, e);
+        return merged; // Safe fallback: preserve all non-encrypted fields like wdAddress
       }
     }));
 
@@ -1023,12 +1024,20 @@ document.getElementById("importFile").onchange = async (e) => {
   const reader = new FileReader();
   reader.onload = async (event) => {
     try {
-      const imported = JSON.parse(event.target.result);
-      if (!imported.faucets) throw new Error("Invalid config: No faucets found.");
+      let imported = JSON.parse(event.target.result);
+      if (!imported) throw new Error("Invalid JSON.");
 
-      // Re-encrypt if needed (saveBtn logic)
-      if (imported.faucets) {
-        imported.faucets = await Promise.all(imported.faucets.map(async f => {
+      // Normalize imported structure: Handle both object and array formats
+      if (Array.isArray(imported)) {
+          imported = { faucets: imported };
+      }
+
+      const { settings: current } = await chrome.storage.local.get("settings");
+      const merged = { ...(current || {}), ...imported };
+
+      // Re-encrypt if needed
+      if (merged.faucets) {
+        merged.faucets = await Promise.all(merged.faucets.map(async f => {
           let u = f.username || "", p = f.password || "";
           if (typeof CryptoUtils !== "undefined" && u && u.length < 30) {
             try { u = await CryptoUtils.encrypt(u); } catch(e){}
@@ -1038,10 +1047,10 @@ document.getElementById("importFile").onchange = async (e) => {
         }));
       }
 
-      await chrome.storage.local.set({ settings: imported });
-      chrome.runtime.sendMessage({ type: "save-settings", settings: imported });
+      await chrome.storage.local.set({ settings: merged });
+      chrome.runtime.sendMessage({ type: "save-settings", settings: merged });
       
-      alert("Configuration imported successfully! Reloading...");
+      alert("Configuration successfully merged and restored! Reloading...");
       window.location.reload();
     } catch (err) {
       console.error("[Popup] Import failed:", err);
