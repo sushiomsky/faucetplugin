@@ -99,9 +99,12 @@ async function refreshStatus() {
 
   // 3. Update Banner
   const updateBanner = document.getElementById("updateBanner");
+  const updateDownloadBtn = document.getElementById("updateDownloadBtn");
   if (stored.updateAvailable) {
     updateBanner.style.display = "block";
-    updateBanner.onclick = () => { window.open(stored.updateUrl || "https://github.com/sushiomsky/faucetplugin", "_blank"); };
+    updateDownloadBtn.onclick = () => { 
+      window.open(stored.updateUrl || "https://github.com/sushiomsky/faucetplugin/releases/latest", "_blank"); 
+    };
   } else {
     updateBanner.style.display = "none";
   }
@@ -226,9 +229,10 @@ async function refreshStatus() {
         
         if (loggedIn) {
             // Fetch multiple data points concurrently
-            const [min, bal] = await Promise.all([
+            const [min, bal, cooldown] = await Promise.all([
                 fetchMinWithdrawal(f),
-                fetchBalance(f)
+                fetchBalance(f),
+                fetchCooldown(f)
             ]);
             
             if (min) {
@@ -244,6 +248,10 @@ async function refreshStatus() {
             }
             if (bal) {
                 faucetBalances[f.url] = bal;
+            }
+            if (cooldown !== null) {
+                // Background update for claimHistory
+                chrome.runtime.sendMessage({ type: "faucet-cooldown", waitMinutes: Math.ceil(cooldown), silent: true, url: f.url });
             }
         }
     });
@@ -339,6 +347,40 @@ async function fetchBalance(faucet) {
     } catch (e) { continue; }
   }
   return null;
+}
+
+async function fetchCooldown(faucet) {
+  try {
+    const baseUrl = faucet.url.replace(/\/$/, '');
+    const testUrl = `${baseUrl}/faucet.php?_t=${Date.now()}`;
+    const resp = await fetch(testUrl, { credentials: 'include', redirect: 'follow', cache: 'no-cache' });
+    const html = await resp.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    
+    // Use unified selectors for cooldown timers
+    const selectors = SiteSelectors.get("faucetCooldownTimer");
+    for (const sel of selectors) {
+      const el = doc.querySelector(sel);
+      if (el) {
+        const text = el.textContent.trim();
+        if (!text) continue;
+        
+        // Parse MM:SS or HH:MM:SS
+        const matches = text.match(/(\d+):(\d+)(?::(\d+))?/);
+        if (matches) {
+          const h = matches[3] ? parseInt(matches[1], 10) : 0;
+          const m = matches[3] ? parseInt(matches[2], 10) : parseInt(matches[1], 10);
+          const s = matches[3] ? parseInt(matches[3], 10) : parseInt(matches[2], 10);
+          return (h * 60) + m + (s / 60);
+        }
+        
+        const minMatch = text.match(/(\d+)\s*(min|minute)/i);
+        if (minMatch) return parseInt(minMatch[1], 10);
+      }
+    }
+    return null;
+  } catch (e) { return null; }
 }
 
 function renderHistory(log) {
@@ -806,9 +848,13 @@ saveBtn.onclick = async () => {
     return { ...f, username: eUser, password: ePass };
   }));
 
+  // Identify custom faucets (those not in the default list)
+  const defaultUrls = new Set(makeFaucetDefaults().map(d => d.url));
+  const customFaucets = faucetsToSave.filter(f => !defaultUrls.has(f.url));
+
   const settings = {
     enabled: document.getElementById("cfgEnabled").checked,
-    botName: document.getElementById("cfgBotName").value.trim() || "Faucet Bot",
+    botName: (document.getElementById("cfgBotName").value.trim() || "Faucet Bot"),
     longBreakEnabled: document.getElementById("longBreakEnabled").checked,
     longBreakFrequency: parseInt(document.getElementById("longBreakFrequency").value) || 5,
     longBreakMin: parseInt(document.getElementById("longBreakMin").value) || 65,
@@ -818,7 +864,8 @@ saveBtn.onclick = async () => {
       botToken: document.getElementById("tgToken").value.trim(),
       chatId: document.getElementById("tgChatId").value.trim()
     },
-    faucets: faucetsToSave
+    faucets: faucetsToSave,
+    customFaucets: customFaucets // Explicitly preserve custom site definitions
   };
 
   chrome.runtime.sendMessage({ type: "save-settings", settings });
@@ -831,6 +878,83 @@ saveBtn.onclick = async () => {
     saveIndicatorTimeout = null;
   }, 1500);
 };
+
+// ── Telegram Verification ─────────────────────────────────────────────────────
+const tgVerifyBtn = document.getElementById("tgVerifyBtn");
+const tgStatusMsg = document.getElementById("tgStatusMsg");
+
+if (tgVerifyBtn) {
+  tgVerifyBtn.onclick = async () => {
+    const token = document.getElementById("tgToken").value.trim();
+    if (!token) {
+      tgStatusMsg.textContent = "Please enter a Bot Token first.";
+      tgStatusMsg.style.color = "var(--status-err)";
+      return;
+    }
+
+    tgVerifyBtn.disabled = true;
+    tgVerifyBtn.textContent = "Checking...";
+    tgStatusMsg.textContent = "Fetching latest messages from Telegram...";
+    tgStatusMsg.style.color = "var(--text-dim)";
+
+    try {
+      const resp = await fetch(`https://api.telegram.org/bot${token}/getUpdates`);
+      const data = await resp.json();
+
+      if (!data.ok) {
+        throw new Error(data.description || "Invalid token or bot error.");
+      }
+
+      const updates = data.result || [];
+      if (updates.length === 0) {
+        tgStatusMsg.textContent = "No messages found. Send any message to your bot first!";
+        tgStatusMsg.style.color = "var(--accent)";
+        tgVerifyBtn.disabled = false;
+        tgVerifyBtn.textContent = "Verify & Link";
+        return;
+      }
+
+      // Get latest chat id
+      const lastUpdate = updates[updates.length - 1];
+      const chatId = lastUpdate.message?.chat?.id || lastUpdate.callback_query?.message?.chat?.id;
+
+      if (!chatId) {
+        throw new Error("Could not find a Chat ID in the latest updates.");
+      }
+
+      document.getElementById("tgChatId").value = chatId;
+      tgStatusMsg.textContent = `✓ Found Chat ID: ${chatId}. Sending test message...`;
+      tgStatusMsg.style.color = "var(--status-ok)";
+
+      // Send test message
+      const testResp = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: "🚀 *FaucetPick Sync Successful!*\n\nThis bot is now linked to your extension and will receive claim/error notifications.\n\n_Note: You can now safely close the extension settings._",
+          parse_mode: "Markdown"
+        })
+      });
+
+      if (testResp.ok) {
+        tgStatusMsg.textContent = "✓ Connected! Found Chat ID & Sent Test Message.";
+        tgStatusMsg.style.color = "var(--status-ok)";
+        // Auto-save
+        await saveBtn.onclick();
+      } else {
+        throw new Error("Found ID, but failed to send test message.");
+      }
+    } catch (err) {
+      console.error("[Telegram Verification]", err);
+      tgStatusMsg.textContent = "✗ Error: " + err.message;
+      tgStatusMsg.style.color = "var(--status-err)";
+    } finally {
+      tgVerifyBtn.disabled = false;
+      tgVerifyBtn.textContent = "Verify & Link";
+    }
+  };
+}
 
 runBtn.onclick = () => chrome.runtime.sendMessage({ type: "manual-run" });
 

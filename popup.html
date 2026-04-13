@@ -3,17 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FaucetPick v2.6</title>
+  <title>FaucetPick v2.7.5</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
 
 <div class="update-banner" id="updateBanner">
-  🚀 New version available — Update Now
+  <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+    <span>🚀 New version available!</span>
+    <button id="updateDownloadBtn" class="btn-small" style="background:#fff; color:var(--accent); font-weight:700;">Download Now</button>
+  </div>
 </div>
 
 <header>
-  <h1>FaucetPick v2.6</h1>
+  <h1>FaucetPick v2.7.5</h1>
   <div class="header-status">
     <div class="pulse-dot"></div>
     <span id="headerStatusText">Status: Ready</span>
@@ -122,11 +125,15 @@
           </div>
           <div class="field">
             <label class="label">Bot Token</label>
-            <input type="password" id="tgToken">
+            <div style="display:flex; gap:8px;">
+              <input type="password" id="tgToken" style="flex:1;">
+              <button id="tgVerifyBtn" class="btn-small" style="background:var(--accent); color:#fff; border-radius:10px; padding:0 12px; font-size:10px; font-weight:700;">Verify & Link</button>
+            </div>
+            <div id="tgStatusMsg" style="font-size:9px; color:var(--text-dim); margin-top:4px;">Send any message to your bot first, then click Verify.</div>
           </div>
           <div class="field">
-            <label class="label">Chat ID</label>
-            <input type="text" id="tgChatId">
+            <label class="label">Chat ID (Auto-detected)</label>
+            <input type="text" id="tgChatId" placeholder="Click Verify to find">
           </div>
         </div>
       </div>

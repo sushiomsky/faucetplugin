@@ -1,5 +1,5 @@
 {
-  "version": "2.7.3",
-  "download_url": "https://github.com/sushiomsky/faucetplugin/raw/main/faucet-pro-v2.7.3.zip",
-  "changelog": "v2.7.3 — Bonus Faucet Reliability & Multi-Host Stability. Fixed bonus faucet claiming on Litepick.io by identifying correct containers, decoupled hourly/bonus claims to ensure rewards are collected even on cooldown, and added explicit support for Suipick.io and Tonpick.game."
+  "version": "2.7.5",
+  "download_url": "https://github.com/sushiomsky/faucetplugin/raw/main/faucet-pro-v2.7.5.zip",
+  "changelog": "v2.7.5 — Sophisticated Cooldown Management. Added early cooldown detection to content script to skip captchas if site is on wait, and introduced background cooldown scraping in the popup dashboard for real-time timer accuracy without active tabs."
 }

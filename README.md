@@ -229,7 +229,7 @@ Two strategies are defined in `constants.js` and implemented in `dice.js`:
 3. Zip the extension root (exclude `.git`, `.ai`, `branding/`, `cws_assets/`, `cws_submission_assets/`, `*.md`):
    ```bash
    cd "faucetplugin 2"
-   zip -r faucet-pro-v2.6.0.zip . \
+   zip -r faucet-pro-v2.7.5.zip . \
      --exclude "*.git*" \
      --exclude ".ai/*" \
      --exclude "branding/*" \

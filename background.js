@@ -557,7 +557,11 @@ async function appendLog(entry) {
   let host = "Unknown";
   try { host = new URL(entry.url).hostname.replace('www.', ''); } catch (_) {}
 
-  if (entry.status === "wd-ok") {
+  if (entry.status === "ok") {
+    sendTelegramAlert(`✅ *Claim Successful!*\n\n*Site:* ${host}\n*Result:* ${entry.balance ? `Captured ${entry.balance}` : "Transaction complete"}`);
+  } else if (entry.status === "cooldown") {
+    sendTelegramAlert(`⏳ *Site on Cooldown*\n\n*Site:* ${host}\n*Status:* Detected wait time of ${entry.reason || "unknown"}. Re-scheduled.`);
+  } else if (entry.status === "wd-ok") {
     sendTelegramAlert(`💸 *Withdrawal Successful!*\n\n*Site:* ${host}\n*Status:* Confirmed and processing.`);
   } else if (entry.status === "error" || entry.status === "wd-error") {
     sendTelegramAlert(`🚨 *Bot Error Detected*\n\n*Site:* ${host}\n*Action:* ${entry.status === "error" ? "Claim/Dice" : "Withdraw"}\n*Reason:* \`${entry.reason || "Unknown"}\``);
@@ -646,13 +650,10 @@ async function handleMessage(msg, sender) {
   }
 
   if (msg.type === "save-settings") {
-    const old = await getSettings();
-    await chrome.storage.local.set({ settings: { ...old, ...msg.settings } });
+    await chrome.storage.local.set({ settings: msg.settings });
     const s = await getSettings();
     
-
     if (s.enabled) {
-      await chrome.storage.local.set({ running: true });
       ensureTickAlarm();
       requestCheckAndRun();
     }
@@ -780,6 +781,35 @@ async function handleMessage(msg, sender) {
     
     // Check for next due faucet in queue
     console.log("[Faucet] Withdrawal complete, checking for next in queue");
+    await requestCheckAndRun();
+    return;
+  }
+
+  // ── faucet-cooldown ───────────────────────────────────────────────────────
+  if (msg.type === "faucet-cooldown") {
+    const targetUrl = msg.url || tabData?.faucetUrl;
+    if (!targetUrl) return;
+
+    const host = hostKey(targetUrl);
+    log(`[Faucet] ${host} reported cooldown: ${msg.waitMinutes}min`);
+    
+    const waitMs = (msg.waitMinutes || 60) * 60 * 1000;
+    // Update history to now + (timer - interval) so nextDue = now + timer
+    const intervalMs = (cfg?.intervalMinutes || 61) * 60 * 1000;
+    claimHistory[targetUrl] = (Date.now() + waitMs) - intervalMs;
+    
+    await chrome.storage.local.set({ claimHistory });
+
+    if (!msg.silent) {
+        await appendLog({ 
+            url: targetUrl, 
+            status: "cooldown", 
+            reason: `${msg.waitMinutes} min remaining`, 
+            ts: Date.now() 
+        });
+    }
+    
+    if (tabId) await closeTab(tabId);
     await requestCheckAndRun();
     return;
   }

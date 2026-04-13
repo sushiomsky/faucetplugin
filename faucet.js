@@ -106,10 +106,127 @@ function findClaimButton() {
   return findClaimButtonInContext(document);
 }
 
+async function claimBonusFaucets() {
+  try {
+    const bonusTab = findBonusTab();
+    if (!bonusTab) {
+      log("No bonus faucet tab found — skipping bonus round");
+      return;
+    }
+
+    const spinsEl = bonusTab.querySelector('#free_spins, .badge');
+    const spins = spinsEl ? parseInt(spinsEl.textContent) : NaN;
+    if (!isNaN(spins) && spins <= 0) {
+      log("Bonus faucet: 0 spins remaining — skipping");
+      return;
+    }
+
+    log(`Clicking bonus tab: "${bonusTab.textContent.trim()}"`);
+    bonusTab.click();
+    await sleep(800);
+    bonusTab.click(); 
+    await sleep(3000); 
+
+    let bonusContent = SiteSelectors.getFirstValid('faucetBonusContent');
+    if (!bonusContent) {
+      bonusContent = document.body; 
+    }
+    log(`Bonus content container identified`);
+
+    let consecutiveNoButton = 0;
+    for (let round = 1; round <= 30; round++) {
+      await sleep(round === 1 ? 1000 : 2500);
+
+      if (bonusExhausted()) {
+        log(`Bonus round ${round}: exhausted (badge check) — done`);
+        break;
+      }
+
+      scrollToBottom();
+      await sleep(600);
+
+      if (hasCaptchaWidget()) {
+        log(`Bonus round ${round}: waiting for captcha…`);
+        chrome.runtime.sendMessage({ type: "focus-tab" });
+        await sleep(1000);
+        
+        let captchaResolved = false;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          setTimeout(tryClickCaptchaWidget, 1500);
+          const token = await Promise.race([
+            waitForCaptchaToken(20000), 
+            sleep(25000).then(() => null)
+          ]);
+          if (token) {
+            log(`Bonus captcha resolved on attempt ${attempt + 1}`);
+            captchaResolved = true;
+            break;
+          }
+          log(`Bonus captcha timeout on attempt ${attempt + 1}, rotating…`);
+          const rotated = await rotateCaptchaType();
+          if (!rotated) break;
+        }
+
+        if (!captchaResolved) { 
+          log("Bonus captcha failed all attempts — stopping bonus loop"); 
+          break; 
+        }
+        await sleep(1500);
+      }
+
+      const claimBtn = findClaimButtonInContext(bonusContent);
+      if (!claimBtn) {
+        consecutiveNoButton++;
+        log(`Bonus round ${round}: no claim button found in bonus content (${consecutiveNoButton}x)`);
+        if (consecutiveNoButton >= 2) {
+          log("No button found twice in a row — stopping bonus loop");
+          break;
+        }
+        continue;
+      }
+
+      consecutiveNoButton = 0;
+      log(`Bonus round ${round}: clicking claim/roll button "${claimBtn.textContent?.trim() || claimBtn.value}"`);
+      claimBtn.click();
+      await sleep(window.POST_CLAIM_WAIT_MS + 1000); 
+
+      if (bonusExhausted()) {
+        log(`Bonus round ${round}: exhausted after claim — done`);
+        break;
+      }
+    }
     log("Bonus faucets claim loop completed");
   } catch (err) {
     log("ERROR in claimBonusFaucets:", err.message);
   }
+}
+
+function detectCooldown() {
+  const timer = SiteSelectors.getFirstValid("faucetCooldownTimer");
+  if (!timer) return null;
+
+  const text = timer.innerText.trim();
+  if (!text) return null;
+
+  log(`Detected timer text: "${text}"`);
+  
+  // Parse MM:SS or HH:MM:SS
+  const matches = text.match(/(\d+):(\d+)(?::(\d+))?/);
+  if (matches) {
+    const h = matches[3] ? parseInt(matches[1], 10) : 0;
+    const m = matches[3] ? parseInt(matches[2], 10) : parseInt(matches[1], 10);
+    const s = matches[3] ? parseInt(matches[3], 10) : parseInt(matches[2], 10);
+    return (h * 60) + m + (s / 60);
+  }
+
+  // Parse "X minutes"
+  const minMatch = text.match(/(\d+)\s*(min|minute)/i);
+  if (minMatch) return parseInt(minMatch[1], 10);
+
+  // If we found a clock but can't parse it, default to a safe 60 min loop if it looks active
+  if (text.length > 0) return 60; 
+
+  return null;
 }
 
 async function tryClaimHourlyFaucet() {
@@ -159,6 +276,14 @@ async function runFaucet() {
   try {
     scrollToBottom();
     await sleep(1000);
+
+    // 0. Check for cooldown immediately to save time/captchas
+    const initialWait = detectCooldown();
+    if (initialWait !== null) {
+      log(`Faucet is already on cooldown: ${Math.ceil(initialWait)} min. Reporting and aborting.`);
+      chrome.runtime.sendMessage({ type: "faucet-cooldown", waitMinutes: Math.ceil(initialWait) });
+      return;
+    }
 
     // 1. Solve Captcha if present (required for both hourly and some bonus claim types)
     let captchaResolved = false;

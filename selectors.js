@@ -182,6 +182,14 @@ const SiteSelectors = {
     diceMultiplierInput: [
       '#multiplier', 'input[name="multiplier"]',
       'input[id*="multiplier" i]', 'input[id*="payout" i]', 'input[name*="payout" i]'
+    ],
+    faucetCooldownTimer: [
+      '#faucet_countdown_clock', '.clock', '.timer', '[id*="countdown" i]', '[class*="countdown" i]',
+      '.faucet-timer', '.faucet-countdown', '.time-left'
+    ],
+    faucetCooldownMsg: [
+      '.alert-info', '.alert-warning', '.msg', '.message',
+      '[class*="wait" i]', '[class*="next" i]', '[class*="timer" i]'
     ]
   }
 };
