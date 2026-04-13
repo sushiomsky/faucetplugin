@@ -1,6 +1,7 @@
+{
   "manifest_version": 3,
   "name": "FaucetPick: Automated Faucet Claims",
-  "version": "2.7.8",
+  "version": "2.7.9",
   "description": "Premium automation for pick-style faucets. Set-and-forget claiming for litepick, dogepick, solpick and more.",
   "permissions": [
     "tabs",

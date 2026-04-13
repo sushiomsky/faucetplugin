@@ -29,6 +29,7 @@
 
   <!-- Test suites -->
   <script src="stubs/chrome.js"></script>
+  <script src="config.test.js"></script>
   <script src="constants.test.js"></script>
   <script src="utils.test.js"></script>
 
@@ -53,7 +54,8 @@
       sum.innerHTML = `<strong>Results: <span class="pass">${r.pass} passed</span>, <span class="fail">${r.fail} failed</span>, ${r.skip} skipped</strong>`;
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
+      await runAllTests();
       renderResults();
     });
   </script>

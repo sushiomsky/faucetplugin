@@ -104,6 +104,14 @@ function normalizeHost(host) {
   return String(host || "").replace(/^www\./i, "").toLowerCase();
 }
 
+/**
+ * Standardizes a URL for dictionary lookup by removing protocol, www and trailing slash.
+ */
+function normalizeUrl(u) {
+  if (!u || typeof u !== 'string') return "";
+  return u.replace(/\/$/, "").replace(/^https?:\/\//, "").replace(/^www\./, "").toLowerCase();
+}
+
 function toFiniteNumber(value, fallback) {
   if (value === null || value === undefined) return fallback;
   const parsed = Number(value);

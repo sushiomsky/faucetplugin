@@ -19,13 +19,12 @@ rm -f "$ZIP_NAME"
 mkdir -p "$BUILD_DIR"
 
 # Define WHITELIST of essential files
+# Pruned for v2.7.9: removed auth.js, captcha.js (unused by manifest)
 FILES=(
   "manifest.json"
   "version.json"
   "background.js"
   "content.js"
-  "auth.js"
-  "captcha.js"
   "constants.js"
   "crypto-utils.js"
   "dice.js"
@@ -40,7 +39,7 @@ FILES=(
   "setup.js"
 )
 
-echo "📦 Copying essential files..."
+echo "📦 Copying essential files (Whitelist Mode)..."
 for f in "${FILES[@]}"; do
   if [ -f "$f" ]; then
     cp "$f" "$BUILD_DIR/"
@@ -55,10 +54,18 @@ if [ -d "icons" ]; then
     cp -r "icons" "$BUILD_DIR/"
 fi
 
+# Cleanup staging area of common OS/Dev trash before zipping
+echo "🧹 Cleaning staging area..."
+find "$BUILD_DIR" -name ".DS_Store" -delete
+find "$BUILD_DIR" -name "._*" -delete
+find "$BUILD_DIR" -name "Thumbs.db" -delete
+
 # Create zip from staging (to avoid including parent folder or hidden files)
 echo "🔒 Packaging release zip..."
 cd "$BUILD_DIR"
-zip -r "../$ZIP_NAME" ./* > /dev/null
+# Use -r for recursive, -X for no extras (metadata/extended attributes)
+# Explicitly exclude hidden files from the root of the zip
+zip -r -X "../$ZIP_NAME" ./* -x ".*" > /dev/null
 cd ..
 
 # Verification
@@ -70,5 +77,5 @@ else
     exit 1
 fi
 
-# Cleanup
+# Final Cleanup of staging
 rm -rf "$BUILD_DIR"

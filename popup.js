@@ -429,14 +429,13 @@ async function loadSettings() {
 
     const storedFaucets = s.faucets || [];
     const storedByUrl = {};
-    const norm = (u) => u.replace(/\/$/, "").replace(/^https?:\/\//, "").replace(/^www\./, "").toLowerCase();
-    for (const f of storedFaucets) { if (f.url) storedByUrl[norm(f.url)] = f; }
+    for (const f of storedFaucets) { if (f.url) storedByUrl[normalizeUrl(f.url)] = f; }
     
     const defaultFaucets = makeFaucetDefaults();
     const allBaseFaucets = [...defaultFaucets, ...(s.customFaucets || [])];
 
     currentFaucets = await Promise.all(allBaseFaucets.map(async def => {
-      const merged = { ...def, ...(storedByUrl[norm(def.url)] || {}) };
+      const merged = { ...def, ...(storedByUrl[normalizeUrl(def.url)] || {}) };
       try {
         let dUser = merged.username || "", dPass = merged.password || "";
         if (typeof CryptoUtils !== "undefined" && dUser && dUser.length > 30) {

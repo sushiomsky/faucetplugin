@@ -23,6 +23,27 @@ describe('sameHost', () => {
   });
 });
 
+describe('normalizeUrl', () => {
+  it('removes trailing slash', () => {
+    assertEqual(normalizeUrl('https://litepick.io/'), 'litepick.io');
+  });
+  it('removes protocol', () => {
+    assertEqual(normalizeUrl('http://litepick.io'), 'litepick.io');
+    assertEqual(normalizeUrl('https://litepick.io'), 'litepick.io');
+  });
+  it('removes www prefix', () => {
+    assertEqual(normalizeUrl('https://www.litepick.io/'), 'litepick.io');
+  });
+  it('converts to lowercase', () => {
+    assertEqual(normalizeUrl('HTTPS://LITEPICK.IO/'), 'litepick.io');
+  });
+  it('handles empty or non-string gracefully', () => {
+    assertEqual(normalizeUrl(''), '');
+    assertEqual(normalizeUrl(null), '');
+    assertEqual(normalizeUrl(undefined), '');
+  });
+});
+
 describe('randomDelay', () => {
   it('returns a number within expected range', () => {
     for (let i = 0; i < 20; i++) {

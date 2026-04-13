@@ -24,14 +24,14 @@ async function getSettings() {
   
   // Match by URL so adding new faucets doesn't lose stored per-faucet config
   const storedByUrl = {};
-  for (const f of storedFaucets) { if (f.url) storedByUrl[f.url] = f; }
+  for (const f of storedFaucets) { if (f.url) storedByUrl[normalizeUrl(f.url)] = f; }
   
   const defaultFaucets = DEFAULT_SETTINGS.faucets;
   const customFaucets = s.customFaucets || [];
   const allBaseFaucets = [...defaultFaucets, ...customFaucets];
   
   const faucets = allBaseFaucets.map(def => {
-    const merged = { ...def, ...(storedByUrl[def.url] || {}) };
+    const merged = { ...def, ...(storedByUrl[normalizeUrl(def.url)] || {}) };
     const dbEnabled = merged.dbEnabled === true;
     const normalizedStrategy = normalizeDbStrategy(merged.dbStrategy, dbEnabled);
     const normalizedChance = normalizeDbChance(merged.dbChance, normalizedStrategy);

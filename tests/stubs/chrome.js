@@ -28,6 +28,11 @@ window.chrome.storage = {
       this._data = {};
       if (cb) cb();
       return Promise.resolve();
+    },
+    remove(key, cb) {
+      delete this._data[key];
+      if (cb) cb();
+      return Promise.resolve();
     }
   }
 };
@@ -35,7 +40,7 @@ window.chrome.storage = {
 window.chrome.runtime = {
   sendMessage: () => {},
   lastError: null,
-  getManifest: () => ({ version: '2.6.0', name: 'FaucetPick Test' })
+  getManifest: () => ({ version: '2.7.9', name: 'FaucetPick Test' })
 };
 
 window.chrome.alarms = {
@@ -52,34 +57,59 @@ window.chrome.tabs = {
 };
 
 // ── Test harness helpers ──────────────────────────────────────────────────────
-window.__tests = window.__tests || [];
-window.__results = window.__results || { pass: 0, fail: 0, skip: 0 };
+window.__tests = [];
+window.__suites = [];
+window.__results = { pass: 0, fail: 0, skip: 0 };
 
 function describe(suiteName, fn) {
-  window.__currentSuite = suiteName;
-  console.log(`\n── ${suiteName} ──`);
-  fn();
+    window.__suites.push({ name: suiteName, fn });
 }
 
 function it(testName, fn) {
-  const entry = { suite: window.__currentSuite, name: testName, passed: false };
-  try {
-    fn();
-    entry.passed = true;
-    window.__results.pass++;
-    console.log(`  ✓ PASS | ${testName}`);
-  } catch (err) {
-    entry.error = err.message;
-    window.__results.fail++;
-    console.error(`  ✗ FAIL | ${testName}:`, err.message);
-  }
-  window.__tests.push(entry);
+    window.__currentSuiteTests = window.__currentSuiteTests || [];
+    window.__currentSuiteTests.push({ name: testName, fn, async: false });
+}
+
+function itAsync(testName, fn) {
+    window.__currentSuiteTests = window.__currentSuiteTests || [];
+    window.__currentSuiteTests.push({ name: testName, fn, async: true });
 }
 
 function skip(testName, reason) {
-  window.__tests.push({ suite: window.__currentSuite, name: testName, skipped: true, reason });
-  window.__results.skip++;
-  console.log(`  ⏭ SKIP | ${testName} (${reason})`);
+    window.__currentSuiteTests = window.__currentSuiteTests || [];
+    window.__currentSuiteTests.push({ name: testName, skipped: true, reason });
+}
+
+async function runAllTests() {
+    for (const suite of window.__suites) {
+        window.__currentSuite = suite.name;
+        window.__currentSuiteTests = [];
+        suite.fn();
+        
+        for (const test of window.__currentSuiteTests) {
+            const entry = { suite: suite.name, name: test.name, passed: false };
+            if (test.skipped) {
+                entry.skipped = true;
+                entry.reason = test.reason;
+                window.__results.skip++;
+            } else {
+                try {
+                    if (test.async) {
+                        await test.fn();
+                    } else {
+                        test.fn();
+                    }
+                    entry.passed = true;
+                    window.__results.pass++;
+                } catch (err) {
+                    entry.error = err.message;
+                    window.__results.fail++;
+                }
+            }
+            window.__tests.push(entry);
+        }
+    }
+    if (window.renderResults) window.renderResults();
 }
 
 function assert(condition, message) {
