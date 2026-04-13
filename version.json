@@ -1,5 +1,5 @@
 {
-  "version": "2.7.7",
-  "download_url": "https://github.com/sushiomsky/faucetplugin/raw/main/faucet-pro-v2.7.7.zip",
-  "changelog": "v2.7.7 — Fix: Corrected icon filenames in manifest (added missing underscores) to resolve loading errors in browser extensions. Includes all v2.7.6 stability features."
+  "version": "2.7.8",
+  "download_url": "https://github.com/sushiomsky/faucetplugin/raw/main/faucet-pro-v2.7.8.zip",
+  "changelog": "v2.7.8 — Fix: Resolved 'Service worker registration failed' by removing incompatible 'type: module' from manifests. Restored full background script functionality in both Chrome and Firefox."
 }
