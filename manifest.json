@@ -1,44 +1,60 @@
 {
   "manifest_version": 3,
   "name": "FaucetPick: Automated Faucet Claims",
-  "version": "2.7.5",
+  "version": "2.7.6",
   "description": "Premium automation for pick-style faucets. Set-and-forget claiming for litepick, dogepick, solpick and more.",
   "permissions": [
     "tabs",
-    "alarms",
     "storage",
     "scripting",
-    "debugger",
-    "cookies"
+    "alarms",
+    "notifications",
+    "offscreen"
   ],
   "host_permissions": [
-    "<all_urls>"
+    "https://*.litepick.io/*",
+    "https://*.dogepick.io/*",
+    "https://*.solpick.io/*",
+    "https://*.bnbpick.io/*",
+    "https://*.tronpick.io/*",
+    "https://*.polpick.io/*",
+    "https://api.telegram.org/*"
   ],
-
-  "icons": {
-    "16": "icons/icon_16.png",
-    "48": "icons/icon_48.png",
-    "128": "icons/icon_128.png"
-  },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "FaucetPick",
     "default_icon": {
-      "16": "icons/icon_16.png",
-      "48": "icons/icon_48.png",
-      "128": "icons/icon_128.png"
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
     }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
   },
   "content_scripts": [
     {
       "matches": [
-        "<all_urls>"
+        "https://*.litepick.io/faucet.php",
+        "https://*.dogepick.io/faucet.php",
+        "https://*.solpick.io/faucet.php",
+        "https://*.bnbpick.io/faucet.php",
+        "https://*.tronpick.io/faucet.php",
+        "https://*.polpick.io/faucet.php"
       ],
-      "js": ["constants.js", "crypto-utils.js", "selectors.js", "utils.js", "captcha.js", "auth.js", "dice.js", "faucet.js", "withdraw.js", "content.js"],
+      "js": ["constants.js", "selectors.js", "faucet.js"],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/*.png", "crypto-utils.js"],
+      "matches": ["<all_urls>"]
     }
   ]
 }

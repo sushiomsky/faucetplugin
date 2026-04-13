@@ -1,5 +1,5 @@
 {
-  "version": "2.7.5",
-  "download_url": "https://github.com/sushiomsky/faucetplugin/raw/main/faucet-pro-v2.7.5.zip",
-  "changelog": "v2.7.5 — Sophisticated Cooldown Management. Added early cooldown detection to content script to skip captchas if site is on wait, and introduced background cooldown scraping in the popup dashboard for real-time timer accuracy without active tabs."
+  "version": "2.7.6",
+  "download_url": "https://github.com/sushiomsky/faucetplugin/raw/main/faucet-pro-v2.7.6.zip",
+  "changelog": "v2.7.6 — Stability & Connectivity Update. Added Telegram auto-verification for seamless bot linking without manual Chat IDs, and implemented smart configuration merging to prevent data loss during backups and updates."
 }
