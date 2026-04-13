@@ -1,5 +1,5 @@
 {
-  "version": "2.7.6",
-  "download_url": "https://github.com/sushiomsky/faucetplugin/raw/main/faucet-pro-v2.7.6.zip",
-  "changelog": "v2.7.6 — Stability & Connectivity Update. Added Telegram auto-verification for seamless bot linking without manual Chat IDs, and implemented smart configuration merging to prevent data loss during backups and updates."
+  "version": "2.7.7",
+  "download_url": "https://github.com/sushiomsky/faucetplugin/raw/main/faucet-pro-v2.7.7.zip",
+  "changelog": "v2.7.7 — Fix: Corrected icon filenames in manifest (added missing underscores) to resolve loading errors in browser extensions. Includes all v2.7.6 stability features."
 }
