@@ -1,17 +1,19 @@
 // ── content.js (Main Orchestrator) ──────────────────────────────────────────
 
 async function main() {
-  console.log("[FaucetPlugin] Content script loaded on:", location.href);
-  
   const isWithdraw = /withdraw/i.test(location.pathname);
+  
   if (isWithdraw) {
-    console.log("[FaucetPlugin] 🛡️ Withdrawal page detected. Entering 5s Deep Sleep for Rocket Loader stability...");
+    console.log("[FaucetPlugin] 🛡️ Withdrawal page detected. Entering 5s Silent Settling...");
     await sleep(5000);
   } else {
-    await sleep(1000); // Standard 1s settling for other pages
+    await sleep(1000); 
   }
 
-  // Load custom selectors
+  // BEGIN INITIALIZATION (Late-execution)
+  console.log("[FaucetPlugin] 🚀 Silent period ended. Initializing...");
+
+  // Load custom selectors (Moved here to avoid early storage contention)
   const { settings = {} } = await chrome.storage.local.get("settings");
   if (typeof SiteSelectors !== "undefined" && settings.customFaucets) {
     SiteSelectors.injectCustom(settings.customFaucets);
@@ -23,7 +25,6 @@ async function main() {
   
   if (!pluginTab) {
     console.warn("[FaucetPlugin] ✘ Plugin Tab Verified: NO. Standing by (manual visit).");
-    log("Not a plugin tab — standing by (manual visit)");
     return;
   }
   

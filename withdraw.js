@@ -135,18 +135,18 @@ async function runWithdraw(address) {
   log("Final synchronization: waiting for Rocket Loader...");
   await waitForRocketLoaderHandlers();
 
-  log("Submitting withdrawal:", submitBtn.textContent?.trim());
-  
+  log("Submitting withdrawal:", submitBtn.textContent?.trim() || "submit-btn");
+
   if (window.$) {
     $(submitBtn).trigger('mousedown').trigger('click').trigger('mouseup');
   } else {
-    submitBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    submitBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, view: window }));
     submitBtn.click();
-    submitBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    submitBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, view: window }));
   }
 
-  await sleep(8000);
-  log("Withdrawal done");
+  await sleep(10000); // 10s wait for final validation
+  log("Withdrawal execution cycle complete");
   
   const delay = randomDelay();
   log(`Withdrawal submitted, waiting ${(delay/1000).toFixed(1)}s before completion`);
