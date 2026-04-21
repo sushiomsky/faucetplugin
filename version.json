@@ -1,5 +1,5 @@
 {
-  "version": "2.9.1",
-  "download_url": "https://github.com/sushiomsky/faucetplugin/raw/main/faucet-pro-v2.9.1.zip",
-  "changelog": "v2.9.1 — Withdrawal Reliability Fix. Enhanced withdrawal button detection with specific selectors and implemented an aggressive clicking strategy (jQuery trigger + simulated mouse events)."
+  "version": "2.9.2",
+  "download_url": "https://github.com/sushiomsky/faucetplugin/raw/main/faucet-pro-v2.9.2.zip",
+  "changelog": "v2.9.2 — Automated Version Optimization. Implemented 'bump.sh' synchronization system. Unified all safety and efficiency features across strategies. Verified withdrawal and claim-cycle reliability."
 }
