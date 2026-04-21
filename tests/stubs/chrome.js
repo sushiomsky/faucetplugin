@@ -40,7 +40,7 @@ window.chrome.storage = {
 window.chrome.runtime = {
   sendMessage: () => {},
   lastError: null,
-  getManifest: () => ({ version: '2.9.10' })
+  getManifest: () => ({ version: '3.0.0' })
 };
 
 window.chrome.alarms = {

@@ -45,7 +45,7 @@ async function waitForRocketLoaderHandlers() {
 }
 
 async function runWithdraw(address) {
-  log("Withdrawal page:", location.href, "address:", address);
+  console.log("[FaucetPlugin] 🚀 Withdrawal sequence started for:", location.href, "address:", address);
 
   if (!address) { sendWdError("no-address-configured"); return; }
 
@@ -66,19 +66,19 @@ async function runWithdraw(address) {
 
     function pollForJQuery() {
       if (window.$ || window.jQuery) {
-        log("✓ jQuery/Zepto detected in window");
+        console.log("[FaucetPlugin] ✓ jQuery/Zepto detected in window");
         finishWaitForJQuery();
       }
     }
 
-    intervalId = setInterval(pollForJQuery, 500); // 500ms conservative poll
+    intervalId = setInterval(pollForJQuery, 500); 
     timeoutId = setTimeout(() => {
-        log("⚠️ Timed out waiting for jQuery - proceeding with vanilla JS");
+        console.warn("[FaucetPlugin] ⚠️ Timed out waiting for jQuery - proceeding with vanilla JS");
         finishWaitForJQuery();
-    }, 12000); // max 12s
+    }, 12000); 
   });
   await sleep(1000); 
-  log("Environment ready. Identifying elements...");
+  console.log("[FaucetPlugin] Environment ready. Scoping minimum withdrawal...");
 
   const minWd = scrapeMinimumWithdrawal();
   if (minWd) {
@@ -86,9 +86,8 @@ async function runWithdraw(address) {
   }
 
   const addrEl = SiteSelectors.getFirstValid("withdrawAddressInput");
-
   if (!addrEl) { sendWdError("no-address-input"); return; }
-  log(`Filling address in ${addrEl.tagName}#${addrEl.id}`);
+  console.log(`[FaucetPlugin] Filling address in <${addrEl.tagName} id="${addrEl.id}">`);
 
   addrEl.focus();
   if (window.$ && $(addrEl).val) {
@@ -104,26 +103,25 @@ async function runWithdraw(address) {
     addrEl.dispatchEvent(new Event("change", { bubbles: true }));
   }
   await sleep(1500); 
-  log("Address filled:", addrEl.value);
 
   const maxBtn = SiteSelectors.getFirstValid("withdrawMaxBtn");
   if (maxBtn) {
+    console.log("[FaucetPlugin] Triggering max balance...");
     if (window.$) $('#max_amount').trigger('click');
     else maxBtn.click();
     await sleep(500);
-    log("Clicked max_amount");
   }
 
-  log("Preparing viewport: scrolling 150px down...");
-  window.scrollBy({ top: 150, behavior: "smooth" });
+  console.log("[FaucetPlugin] Preparing viewport: scrolling 170px down...");
+  window.scrollBy({ top: 170, behavior: "smooth" });
   await sleep(1000); 
 
-  log("Waiting for withdrawal captcha…");
+  console.log("[FaucetPlugin] Waiting for withdrawal captcha…");
   chrome.runtime.sendMessage({ type: "focus-tab" });
-  await sleep(3000); // Initial settlement period
+  await sleep(3000); 
   const token = await waitForCaptchaToken();
   if (!token) { sendWdError("withdraw-captcha-timeout"); return; }
-  log("Withdrawal captcha resolved");
+  console.log("[FaucetPlugin] ✓ Withdrawal captcha resolved");
   await sleep(1000);
 
   let submitBtn = SiteSelectors.getAllValid("withdrawSubmitBtnFallback").find(b =>
@@ -133,29 +131,38 @@ async function runWithdraw(address) {
     submitBtn = SiteSelectors.getFirstValid("withdrawSubmitBtn");
   }
 
-  if (!submitBtn) { sendWdError("no-submit-button"); return; }
+  if (!submitBtn) {
+    console.error("[FaucetPlugin] ✘ Could not identify withdrawal submit button.");
+    sendWdError("no-submit-button"); 
+    return; 
+  }
 
-  // FINAL VISIBILITY SYNC: ensure button is in view before clicking
-  log("Ensuring button is visible in viewport...");
+  // FINAL VISIBILITY SYNC
+  console.log(`[FaucetPlugin] Target found: <${submitBtn.tagName} id="${submitBtn.id}"> "${submitBtn.innerText.trim()}"`);
+  console.log("[FaucetPlugin] Ensuring button is visible in viewport...");
   submitBtn.scrollIntoView({ behavior: "smooth", block: "nearest" });
   await sleep(1000);
 
-  // FINAL SYNC: Wait for Rocket Loader to "unblock" the button's onclick handler
-  log("Final synchronization: waiting for Rocket Loader...");
+  // FINAL SYNC
+  console.log("[FaucetPlugin] Final synchronization: waiting for Rocket Loader...");
   await waitForRocketLoaderHandlers();
 
-  log("Submitting withdrawal:", submitBtn.textContent?.trim() || "submit-btn");
-
+  console.log("[FaucetPlugin] 🚀 Clicking withdrawal button now...");
+  
   if (window.$) {
-    $(submitBtn).trigger('mousedown').trigger('click').trigger('mouseup');
+    const jSub = $(submitBtn);
+    jSub.trigger('mousedown');
+    await sleep(200);
+    jSub.trigger('click').trigger('mouseup');
   } else {
     submitBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, view: window }));
+    await sleep(200);
     submitBtn.click();
     submitBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, view: window }));
   }
 
-  await sleep(10000); // 10s wait for final validation
-  log("Withdrawal execution cycle complete");
+  await sleep(10000); 
+  console.log("[FaucetPlugin] Withdrawal execution cycle complete.");
   
   const delay = randomDelay();
   log(`Withdrawal submitted, waiting ${(delay/1000).toFixed(1)}s before completion`);
