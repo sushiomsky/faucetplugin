@@ -1,5 +1,5 @@
 {
-  "version": "2.9.3",
-  "download_url": "https://github.com/sushiomsky/faucetplugin/raw/main/faucet-pro-v2.9.3.zip",
+  "version": "2.9.4",
+  "download_url": "https://github.com/sushiomsky/faucetplugin/raw/main/faucet-pro-v2.9.4.zip",
   "changelog": "v2.9.2 — Automated Version Optimization. Implemented 'bump.sh' synchronization system. Unified all safety and efficiency features across strategies. Verified withdrawal and claim-cycle reliability."
 }

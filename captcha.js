@@ -74,29 +74,29 @@ function clickElementRobust(el, label) {
 }
 
 function tryClickCaptchaWidget() {
+  // 1. Try Turnstile Frames (Highest Priority)
   const turnstileFrames = SiteSelectors.getAllValid("captchaFrames");
   for (const frame of turnstileFrames) {
     if (!isVisibleForClick(frame)) continue;
-    // Don't click if it looks like it's solved (response input has value)
+    
+    // Safety check: Don't click if it's already solved or if it's explicitly "unsolved"
+    // (Turnstile frames often have a name like 'cf-chl-widget-...')
     const resp = SiteSelectors.getFirstValid("captchaTokenCloudflare");
     if (resp && resp.value && resp.value.length > 30) continue;
+    
     if (clickElementRobust(frame, "Turnstile iframe")) return true;
   }
 
+  // 2. Try Turnstile Checkboxes (if visible inside frame or via fallback)
   const turnstileCheckboxes = SiteSelectors.getAllValid("captchaCheckboxes");
   for (const checkbox of turnstileCheckboxes) {
     if (checkbox.checked || !isVisibleForClick(checkbox)) continue;
     if (clickElementRobust(checkbox, "Turnstile checkbox")) return true;
   }
 
-  let widget = SiteSelectors.getFirstValid("captchaTurnstileWidget");
-  if (widget && isVisibleForClick(widget) && clickElementRobust(widget, "Turnstile container")) return true;
-
-  widget = SiteSelectors.getFirstValid("captchaHCaptchaWidget");
+  // 3. Fallbacks (Generic/hCaptcha/Icon)
+  let widget = SiteSelectors.getFirstValid("captchaHCaptchaWidget");
   if (widget && isVisibleForClick(widget) && clickElementRobust(widget, "hCaptcha widget")) return true;
-
-  widget = SiteSelectors.getFirstValid("captchaGenericWidget");
-  if (widget && isVisibleForClick(widget) && clickElementRobust(widget, "generic captcha container")) return true;
 
   widget = SiteSelectors.getFirstValid("captchaIconWidget");
   if (widget && isVisibleForClick(widget) && clickElementRobust(widget, "IconCaptcha widget")) return true;
@@ -104,7 +104,7 @@ function tryClickCaptchaWidget() {
   widget = SiteSelectors.getFirstValid("captchaPCaptchaWidget");
   if (widget && isVisibleForClick(widget) && clickElementRobust(widget, "pCaptcha widget")) return true;
 
-  log("No captcha widget found to click");
+  log("No valid captcha widget found to click (avoiding container-level clicks)");
   return false;
 }
 

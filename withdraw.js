@@ -35,7 +35,7 @@ async function runWithdraw(address) {
   if (!address) { sendWdError("no-address-configured"); return; }
 
   // Wait for Rocket Loader to finish executing page scripts (jQuery etc.)
-  await sleep(2000);
+  await sleep(4000); // Increased to 4s for stability
   await new Promise(function waitForJQuery(resolveWhenReady) {
     let done = false;
     let intervalId = null;
@@ -53,11 +53,11 @@ async function runWithdraw(address) {
       if (window.$ || window.jQuery) finishWaitForJQuery();
     }
 
-    intervalId = setInterval(pollForJQuery, 200);
-    timeoutId = setTimeout(finishWaitForJQuery, 8000); // max 8s
+    intervalId = setInterval(pollForJQuery, 250);
+    timeoutId = setTimeout(finishWaitForJQuery, 10000); // max 10s
   });
-  await sleep(500);
-  log("jQuery available:", !!window.$);
+  await sleep(1000); 
+  log("Environment ready (jQuery:", !!window.$, ")");
 
   const minWd = scrapeMinimumWithdrawal();
   if (minWd) {
@@ -67,7 +67,7 @@ async function runWithdraw(address) {
   const addrEl = SiteSelectors.getFirstValid("withdrawAddressInput");
 
   if (!addrEl) { sendWdError("no-address-input"); return; }
-  log("Address element tag:", addrEl.tagName, "id:", addrEl.id);
+  log(`Filling address in ${addrEl.tagName}#${addrEl.id}`);
 
   addrEl.focus();
   if (window.$ && $(addrEl).val) {
@@ -82,22 +82,22 @@ async function runWithdraw(address) {
     addrEl.dispatchEvent(new Event("input",  { bubbles: true }));
     addrEl.dispatchEvent(new Event("change", { bubbles: true }));
   }
-  await sleep(1000); 
+  await sleep(1500); 
   log("Address filled:", addrEl.value);
 
   const maxBtn = SiteSelectors.getFirstValid("withdrawMaxBtn");
   if (maxBtn) {
     if (window.$) $('#max_amount').trigger('click');
     else maxBtn.click();
-    await sleep(300);
+    await sleep(500);
     log("Clicked max_amount");
   }
 
   log("Waiting for withdrawal captcha…");
   chrome.runtime.sendMessage({ type: "focus-tab" });
-  await sleep(400);
+  await sleep(3000); // Wait for Turnstile to settle
   setTimeout(tryClickCaptchaWidget, 1000);
-  setTimeout(tryClickCaptchaWidget, 5000);
+  setTimeout(tryClickCaptchaWidget, 6000);
   const token = await waitForCaptchaToken();
   if (!token) { sendWdError("withdraw-captcha-timeout"); return; }
   log("Withdrawal captcha resolved");
