@@ -94,15 +94,30 @@ function sendPhaseHeartbeat(detail = "") {
   chrome.runtime.sendMessage({ type: "phase-heartbeat", phase: "faucet", detail, ts: now });
 }
 
-function isPluginTab() {
-  if (location.hash === "#manual") return Promise.resolve(true);
+async function isPluginTab() {
+  if (location.hash === "#manual") return true;
   
-  return new Promise(resolve => {
-    chrome.runtime.sendMessage({ type: "check-plugin-tab" }, (resp) => {
-      if (chrome.runtime.lastError) { resolve(false); return; }
-      resolve(resp?.yes === true);
+  // Retry 5 times with 500ms intervals (2.5s total) to allow background/storage sync
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    const isReady = await new Promise(resolve => {
+      chrome.runtime.sendMessage({ type: "check-plugin-tab" }, (resp) => {
+        if (chrome.runtime.lastError) { resolve(false); return; }
+        resolve(resp?.yes === true);
+      });
     });
-  });
+
+    if (isReady) {
+      if (attempt > 1) log(`✓ Plugin Tab Verified on attempt ${attempt}`);
+      return true;
+    }
+    
+    if (attempt < 5) {
+      log(`⚠️ Plugin Tab Verification attempt ${attempt} failed, retrying in 500ms...`);
+      await sleep(500);
+    }
+  }
+
+  return false;
 }
 
 function getWithdrawInfo() {

@@ -415,6 +415,8 @@ async function dispatchNativeClick(tabId, x, y) {
   const protocolVersion = "1.3";
   let attached = false;
 
+  console.log(`[NativeClick] Attempting click at (${x}, ${y}) on tab ${tabId}...`);
+
   try {
     if (!chrome.debugger) {
       throw new Error("debugger-api-not-supported-in-this-browser");
@@ -422,37 +424,27 @@ async function dispatchNativeClick(tabId, x, y) {
     await chrome.debugger.attach(target, protocolVersion);
     attached = true;
   } catch (err) {
-    throw new Error(`debugger-attach-failed: ${err?.message || err}`);
+    const msg = err?.message || String(err);
+    if (msg.includes("already attached")) {
+      attached = true; // Proceed if already attached
+    } else {
+      throw new Error(`debugger-attach-failed: ${msg}`);
+    }
   }
 
   try {
-    const moveParams = {
-      type: "mouseMoved",
-      x: Math.round(x),
-      y: Math.round(y),
-      button: "none",
-      pointerType: "mouse"
-    };
-    const downParams = {
-      type: "mousePressed",
-      x: Math.round(x),
-      y: Math.round(y),
-      button: "left",
-      clickCount: 1,
-      pointerType: "mouse"
-    };
-    const upParams = {
-      type: "mouseReleased",
-      x: Math.round(x),
-      y: Math.round(y),
-      button: "left",
-      clickCount: 1,
-      pointerType: "mouse"
-    };
+    const moveParams = { type: "mouseMoved", x: Math.round(x), y: Math.round(y), button: "none", pointerType: "mouse" };
+    const downParams = { type: "mousePressed", x: Math.round(x), y: Math.round(y), button: "left", clickCount: 1, pointerType: "mouse" };
+    const upParams   = { type: "mouseReleased", x: Math.round(x), y: Math.round(y), button: "left", clickCount: 1, pointerType: "mouse" };
 
     await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", moveParams);
     await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", downParams);
     await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", upParams);
+    
+    console.log(`[NativeClick] ✓ Click sequence injected successfully.`);
+  } catch (err) {
+    console.error(`[NativeClick] ✗ Command failed:`, err);
+    throw err;
   } finally {
     if (attached) {
       try { await chrome.debugger.detach(target); } catch (_) {}
