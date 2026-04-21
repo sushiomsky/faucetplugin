@@ -101,9 +101,7 @@ async function runWithdraw(address) {
 
   log("Waiting for withdrawal captcha…");
   chrome.runtime.sendMessage({ type: "focus-tab" });
-  await sleep(3000); // Wait for Turnstile to settle
-  setTimeout(tryClickCaptchaWidget, 1000);
-  setTimeout(tryClickCaptchaWidget, 6000);
+  await sleep(3000); // Initial settlement period
   const token = await waitForCaptchaToken();
   if (!token) { sendWdError("withdraw-captcha-timeout"); return; }
   log("Withdrawal captcha resolved");

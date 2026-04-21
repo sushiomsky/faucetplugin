@@ -200,16 +200,28 @@ function waitForCaptchaToken(timeoutMs = window.MAX_WAIT_MS) {
       const elapsed = Date.now() - start;
       const now = Date.now();
 
+      // Ensure tab is focused periodically
       if (now - lastFocusTime >= 10000) {
         chrome.runtime.sendMessage({ type: "focus-tab" });
         lastFocusTime = now;
       }
 
-      if (now - lastClickTime >= window.CAPTCHA_RETRY_MS && clickAttempts < maxClickAttempts) {
+      // First click: promptly after initialization (min 1s settling)
+      // Subsquent clicks: respect CAPTCHA_RETRY_MS
+      const isFirstAttempt = (clickAttempts === 0);
+      const readyToClick = isFirstAttempt 
+        ? (elapsed >= 1000) 
+        : (now - lastClickTime >= window.CAPTCHA_RETRY_MS);
+
+      if (readyToClick && clickAttempts < maxClickAttempts) {
+        log(`Triggering captcha interaction attempt ${clickAttempts + 1}...`);
         const clicked = tryClickCaptchaWidget();
         if (clicked) {
           lastClickTime = now;
           clickAttempts++;
+        } else {
+          // If no widget found, don't count as attempt, but wait a bit longer
+          lastClickTime = now - (window.CAPTCHA_RETRY_MS / 2); 
         }
       }
 
