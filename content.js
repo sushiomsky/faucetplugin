@@ -3,13 +3,19 @@
 async function main() {
   console.log("[FaucetPlugin] Content script loaded on:", location.href);
   
-  // Load custom selectors before doing anything
+  const isWithdraw = /withdraw/i.test(location.pathname);
+  if (isWithdraw) {
+    console.log("[FaucetPlugin] 🛡️ Withdrawal page detected. Entering 5s Deep Sleep for Rocket Loader stability...");
+    await sleep(5000);
+  } else {
+    await sleep(1000); // Standard 1s settling for other pages
+  }
+
+  // Load custom selectors
   const { settings = {} } = await chrome.storage.local.get("settings");
   if (typeof SiteSelectors !== "undefined" && settings.customFaucets) {
     SiteSelectors.injectCustom(settings.customFaucets);
   }
-
-  await sleep(1000); // 1s settling (Small Delays)
 
   // GUARD: do nothing if the user opened this page manually
   console.log("[FaucetPlugin] Verifying plugin-tab status...");

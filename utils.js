@@ -141,7 +141,11 @@ function getCurrentTabState() {
 function isFaucetPage()   { return location.pathname.includes("faucet.php"); }
 function isWithdrawPage() { return /withdraw/i.test(location.pathname); }
 function isDicebetPage()  { return location.pathname.includes("dice.php") || /dice|dicebet/i.test(location.pathname); }
-function hasLoginForm()   { return !!document.querySelector('input[type="password"]'); }
+function hasLoginForm()   { 
+  try {
+    return !!document.querySelector('input[type="password"]'); 
+  } catch (_) { return false; }
+}
 
 function parseNumericValue(rawText) {
   if (typeof rawText !== "string") return null;

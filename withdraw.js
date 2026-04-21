@@ -35,7 +35,7 @@ async function runWithdraw(address) {
   if (!address) { sendWdError("no-address-configured"); return; }
 
   // Wait for Rocket Loader to finish executing page scripts (jQuery etc.)
-  await sleep(4000); // Increased to 4s for stability
+  await sleep(2000); 
   await new Promise(function waitForJQuery(resolveWhenReady) {
     let done = false;
     let intervalId = null;
@@ -50,14 +50,20 @@ async function runWithdraw(address) {
     }
 
     function pollForJQuery() {
-      if (window.$ || window.jQuery) finishWaitForJQuery();
+      if (window.$ || window.jQuery) {
+        log("✓ jQuery/Zepto detected in window");
+        finishWaitForJQuery();
+      }
     }
 
-    intervalId = setInterval(pollForJQuery, 250);
-    timeoutId = setTimeout(finishWaitForJQuery, 10000); // max 10s
+    intervalId = setInterval(pollForJQuery, 500); // 500ms conservative poll
+    timeoutId = setTimeout(() => {
+        log("⚠️ Timed out waiting for jQuery - proceeding with vanilla JS");
+        finishWaitForJQuery();
+    }, 12000); // max 12s
   });
   await sleep(1000); 
-  log("Environment ready (jQuery:", !!window.$, ")");
+  log("Environment ready. Identifying elements...");
 
   const minWd = scrapeMinimumWithdrawal();
   if (minWd) {
