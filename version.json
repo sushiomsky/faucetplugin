@@ -1,5 +1,5 @@
 {
-  "version": "2.9.0",
-  "download_url": "https://github.com/sushiomsky/faucetplugin/raw/main/faucet-pro-v2.9.0.zip",
-  "changelog": "v2.9.0 — Safety & Efficiency Update. Added manual 'Min Bet' per strategy with final All-In roll. Implemented Claim Cycle Guard (stops 2m before next faucet). Added pre-betting threshold safety check."
+  "version": "2.9.1",
+  "download_url": "https://github.com/sushiomsky/faucetplugin/raw/main/faucet-pro-v2.9.1.zip",
+  "changelog": "v2.9.1 — Withdrawal Reliability Fix. Enhanced withdrawal button detection with specific selectors and implemented an aggressive clicking strategy (jQuery trigger + simulated mouse events)."
 }

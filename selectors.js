@@ -126,7 +126,7 @@ const SiteSelectors = {
     withdrawMinAmountText: ['.min_withdraw', '#min_withdraw', '.withdrawal_min', '.alert-info', '.text-muted', '.form-wrapper__main p b'],
     withdrawAddressInput: ['#withdrawal_address', '[name*="address" i]', '[id*="address" i]'],
     withdrawMaxBtn: ['#max_amount'],
-    withdrawSubmitBtn: ['button[type="submit"]', 'input[type="submit"]'],
+    withdrawSubmitBtn: ['#withdraw', 'button[type="submit"]', 'input[type="submit"]', 'button[onclick*="withdraw" i]'],
     withdrawSubmitBtnFallback: ['button'],
 
     // ── Faucet ──

@@ -113,7 +113,14 @@ async function runWithdraw(address) {
   if (!submitBtn) { sendWdError("no-submit-button"); return; }
 
   log("Submitting withdrawal:", submitBtn.textContent?.trim());
-  submitBtn.click();
+  
+  if (window.$) {
+    $(submitBtn).trigger('mousedown').trigger('click').trigger('mouseup');
+  } else {
+    submitBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    submitBtn.click();
+    submitBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  }
 
   await sleep(8000);
   log("Withdrawal done");
