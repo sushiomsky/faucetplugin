@@ -29,6 +29,21 @@ function scrapeMinimumWithdrawal() {
   return null;
 }
 
+async function waitForRocketLoaderHandlers() {
+  return new Promise(resolve => {
+    let attempts = 0;
+    const interval = setInterval(() => {
+      attempts++;
+      if (window.__cfRLUnblockHandlers || attempts > 20) {
+        if (window.__cfRLUnblockHandlers) log("✓ Rocket Loader handlers UNBLOCKED");
+        else log("⚠️ Rocket Loader unblock timeout - attempting click anyway");
+        clearInterval(interval);
+        resolve();
+      }
+    }, 500);
+  });
+}
+
 async function runWithdraw(address) {
   log("Withdrawal page:", location.href, "address:", address);
 
@@ -115,6 +130,10 @@ async function runWithdraw(address) {
   }
 
   if (!submitBtn) { sendWdError("no-submit-button"); return; }
+
+  // FINAL SYNC: Wait for Rocket Loader to "unblock" the button's onclick handler
+  log("Final synchronization: waiting for Rocket Loader...");
+  await waitForRocketLoaderHandlers();
 
   log("Submitting withdrawal:", submitBtn.textContent?.trim());
   
