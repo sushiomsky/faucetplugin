@@ -48,12 +48,12 @@ async function waitForPasswordManagerAutofill(userInput, pwdInput, timeoutMs = 1
 
     if (!nudged) {
       if (userInput) userInput.focus();
-      await sleep(200);
+      await window.sleep(200);
       if (pwdInput) pwdInput.focus();
       nudged = true;
     }
 
-    await sleep(300);
+    await window.sleep(300);
   }
 
   return null;
@@ -72,13 +72,13 @@ function setupManualLoginCapture() {
       const password = pwdInput?.value?.trim();
       
       if (username && password) {
-        log(`Captured credentials from manual login: ${username}`);
+        window.log(`Captured credentials from manual login: ${username}`);
         
-        const faucetUrl = await getFaucetUrl();
+        const faucetUrl = await window.getFaucetUrl();
         const { settings = {} } = await chrome.storage.local.get('settings');
         
         if (settings.faucets) {
-          const faucet = settings.faucets.find(f => sameHost(f.url, faucetUrl));
+          const faucet = settings.faucets.find(f => window.sameHost(f.url, faucetUrl));
           if (faucet) {
             let encUser = username;
             let encPass = password;
@@ -89,7 +89,7 @@ function setupManualLoginCapture() {
             faucet.username = encUser;
             faucet.password = encPass;
             await chrome.storage.local.set({ settings });
-            log(`✓ Stored and encrypted credentials for ${faucet.label}`);
+            window.log(`✓ Stored and encrypted credentials for ${faucet.label}`);
           }
         }
       }
@@ -99,12 +99,14 @@ function setupManualLoginCapture() {
   }
 }
 
-async window.runLogin = function runLogin() {
-  log("Login page:", location.href);
+window.runLogin = async function runLogin() {
+  window.log("Login page:", location.href);
 
-  await sleep(1500);
-  scrollToBottom();
-  await sleep(800);
+  await window.waitForRocketLoaderHandlers();
+  await window.sleep(1500);
+
+  window.scrollToBottom();
+  await window.sleep(800);
 
   let form = null;
   let loginScope = null;
@@ -119,16 +121,16 @@ async window.runLogin = function runLogin() {
 
     if (pwdInput) {
       loginScope = form || pwdInput.closest("form") || document;
-      log(`✓ Login inputs found on attempt ${i + 1}/${maxAttempts}`);
+      window.log(`✓ Login inputs found on attempt ${i + 1}/${maxAttempts}`);
       break;
     }
     attemptCount = i + 1;
-    await sleep(500);
+    await window.sleep(500);
   }
 
   if (!pwdInput) {
-    log(`✗ Password input not found`);
-    sendError("no-password-input");
+    window.log(`✗ Password input not found`);
+    window.sendError("no-password-input");
     return;
   }
 
@@ -138,51 +140,51 @@ async window.runLogin = function runLogin() {
   const hasStoredCreds = !!(creds.username && creds.password);
 
   if (hasStoredCreds) {
-    log("✓ Found extension-stored credentials, filling...");
+    window.log("✓ Found extension-stored credentials, filling...");
     if (userInput) {
       fillInput(userInput, creds.username);
-      await sleep(window.INPUT_SETTLE_MS);
+      await window.sleep(window.INPUT_SETTLE_MS);
     }
     fillInput(pwdInput, creds.password);
-    await sleep(window.INPUT_SETTLE_MS);
+    await window.sleep(window.INPUT_SETTLE_MS);
   } else {
-    log("No extension credentials configured. Trying Chrome Password Manager autofill...");
+    window.log("No extension credentials configured. Trying Chrome Password Manager autofill...");
     setupManualLoginCapture();
 
     const autofilled = await waitForPasswordManagerAutofill(userInput, pwdInput);
     if (!autofilled) {
-      if (hasCaptchaWidget()) {
+      if (window.hasCaptchaWidget()) {
         chrome.runtime.sendMessage({ type: "focus-tab" });
-        await sleep(400);
-        tryClickCaptchaWidget();
+        await window.sleep(400);
+        window.tryClickCaptchaWidget();
       }
-      log("No autofilled credentials detected — waiting for manual login");
+      window.log("No autofilled credentials detected — waiting for manual login");
       return;
     }
 
-    log(`✓ Using Chrome Password Manager autofill`);
+    window.log(`✓ Using Chrome Password Manager autofill`);
     triggerInputEvents(userInput);
     triggerInputEvents(pwdInput);
-    await sleep(window.INPUT_SETTLE_MS);
+    await window.sleep(window.INPUT_SETTLE_MS);
   }
 
-  await sleep(window.CAPTCHA_SETTLE_MS);
+  await window.sleep(window.CAPTCHA_SETTLE_MS);
 
-  if (hasCaptchaWidget()) {
-    log("Captcha detected on login page");
+  if (window.hasCaptchaWidget()) {
+    window.log("Captcha detected on login page");
     chrome.runtime.sendMessage({ type: "focus-tab" });
-    await sleep(500);
+    await window.sleep(500);
 
-    tryClickCaptchaWidget();
-    await sleep(window.CAPTCHA_SETTLE_MS);
+    window.tryClickCaptchaWidget();
+    await window.sleep(window.CAPTCHA_SETTLE_MS);
 
-    const token = await waitForCaptchaToken(90000); 
+    const token = await window.waitForCaptchaToken(90000); 
     if (!token) {
-      log("✗ Login captcha timeout");
-      sendError("login-captcha-timeout");
+      window.log("✗ Login captcha timeout");
+      window.sendError("login-captcha-timeout");
       return;
     }
-    log("✓ Login captcha resolved");
+    window.log("✓ Login captcha resolved");
   }
 
   let submitBtn = __FP_Selectors.getFirstValid("loginSubmitBySelector", loginScope);
@@ -192,22 +194,22 @@ async window.runLogin = function runLogin() {
   }
 
   if (!submitBtn) {
-    sendError("no-submit-button");
+    window.sendError("no-submit-button");
     return;
   }
 
-  log(`✓ Found submit button: "${submitBtn.textContent?.trim() || submitBtn.value || 'Submit'}"`);
+  window.log(`✓ Found submit button: "${submitBtn.textContent?.trim() || submitBtn.value || 'Submit'}"`);
   
   if (submitBtn.offsetParent === null) {
     submitBtn.scrollIntoView({ behavior: "smooth", block: "center" });
-    await sleep(500);
+    await window.sleep(500);
   }
 
   if (!clickElementRobust(submitBtn, "login submit button")) {
     try { submitBtn.click(); } catch (_) {}
   }
   
-  const delay = randomDelay();
-  await sleep(delay);
+  const delay = window.randomDelay();
+  await window.sleep(delay);
 }
 })();

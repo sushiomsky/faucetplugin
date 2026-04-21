@@ -46,30 +46,30 @@ window.sameHost = function sameHost(url1, url2) {
   }
 }
 
-function randomDelay() {
+window.randomDelay = function randomDelay() {
   return window.RANDOM_DELAY_MIN_MS + Math.random() * (window.RANDOM_DELAY_MAX_MS - window.RANDOM_DELAY_MIN_MS);
 }
 
-function randomIntInclusive(min, max) {
+window.randomIntInclusive = function randomIntInclusive(min, max) {
   const safeMin = Math.ceil(Math.min(min, max));
   const safeMax = Math.floor(Math.max(min, max));
   return Math.floor(Math.random() * (safeMax - safeMin + 1)) + safeMin;
 }
 
-function getUsdFiveWdThresholdForHost(host) {
-  const fallback = DEFAULT_USD5_WD_THRESHOLD_BY_HOST[normalizeHost(host)] || "5";
+window.getUsdFiveWdThresholdForHost = function getUsdFiveWdThresholdForHost(host) {
+  const fallback = window.DEFAULT_USD5_WD_THRESHOLD_BY_HOST[window.normalizeHost(host)] || "5";
   const parsed = parseFloat(fallback);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
 }
 
-function normalizeWdThresholdForHost(host, rawThreshold) {
-  const fallback = getUsdFiveWdThresholdForHost(host);
+window.normalizeWdThresholdForHost = function normalizeWdThresholdForHost(host, rawThreshold) {
+  const fallback = window.getUsdFiveWdThresholdForHost(host);
   const parsed = parseFloat(rawThreshold);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return parsed;
 }
 
-function getDicePageUrl() {
+window.getDicePageUrl = function getDicePageUrl() {
   try {
     return new URL(location.href).origin + "/dice.php";
   } catch {
@@ -95,7 +95,7 @@ window.sendPhaseHeartbeat = function sendPhaseHeartbeat(detail = "") {
   chrome.runtime.sendMessage({ type: "phase-heartbeat", phase: "faucet", detail, ts: now });
 }
 
-async window.isPluginTab = function isPluginTab() {
+window.isPluginTab = async function isPluginTab() {
   if (location.hash === "#manual") return true;
   
   // Retry 5 times with 500ms intervals (2.5s total) to allow background/storage sync
@@ -108,13 +108,13 @@ async window.isPluginTab = function isPluginTab() {
     });
 
     if (isReady) {
-      if (attempt > 1) log(`✓ Plugin Tab Verified on attempt ${attempt}`);
+      if (attempt > 1) window.log(`✓ Plugin Tab Verified on attempt ${attempt}`);
       return true;
     }
     
     if (attempt < 5) {
-      log(`⚠️ Plugin Tab Verification attempt ${attempt} failed, retrying in 500ms...`);
-      await sleep(500);
+      window.log(`⚠️ Plugin Tab Verification attempt ${attempt} failed, retrying in 500ms...`);
+      await window.sleep(500);
     }
   }
 
@@ -139,9 +139,9 @@ window.getCurrentTabState = function getCurrentTabState() {
   });
 }
 
-window.isFaucetPage = window.isFaucetPage = function isFaucetPage()   { return location.pathname.includes("faucet.php"); }
+window.isFaucetPage = function isFaucetPage()   { return location.pathname.includes("faucet.php"); }
 window.isWithdrawPage = function isWithdrawPage() { return /withdraw/i.test(location.pathname); }
-window.isDicebetPage = window.isDicebetPage = function isDicebetPage()  { return location.pathname.includes("dice.php") || /dice|dicebet/i.test(location.pathname); }
+window.isDicebetPage = function isDicebetPage()  { return location.pathname.includes("dice.php") || /dice|dicebet/i.test(location.pathname); }
 window.hasLoginForm = function hasLoginForm()   { 
   try {
     return !!document.querySelector('input[type="password"]'); 
@@ -159,21 +159,59 @@ window.parseNumericValue = function parseNumericValue(rawText) {
 
 window.readBalance = function readBalance() {
   const els = [
-    ...__FP_Selectors.getAllValid("balance"),
-    ...__FP_Selectors.getAllValid("balancePrimary"),
-    ...__FP_Selectors.getAllValid("balanceFallback")
+    ...window.__FP_Selectors.getAllValid("balance"),
+    ...window.__FP_Selectors.getAllValid("balancePrimary"),
+    ...window.__FP_Selectors.getAllValid("balanceFallback")
   ];
   
   for (const el of els) {
-    const value = parseNumericValue(el.textContent?.trim() || "");
+    const value = window.parseNumericValue(el.textContent?.trim() || "");
     if (value != null) return value;
   }
   return null;
 }
 
-async window.getFaucetUrl = function getFaucetUrl() {
-  const tabState = await getCurrentTabState();
+window.getFaucetUrl = async function getFaucetUrl() {
+  const tabState = await window.getCurrentTabState();
   if (tabState?.faucetUrl) return tabState.faucetUrl;
   return location.origin + '/faucet.php';
 }
+
+window.waitForRocketLoaderHandlers = async function waitForRocketLoaderHandlers() {
+  return new Promise(resolve => {
+    let attempts = 0;
+    const interval = setInterval(() => {
+      attempts++;
+      if (window.__cfRLUnblockHandlers || attempts > 20) {
+        if (window.__cfRLUnblockHandlers) window.log("✓ Rocket Loader handlers UNBLOCKED");
+        else window.log("⚠️ Rocket Loader unblock timeout - proceeding");
+        clearInterval(interval);
+        resolve();
+      }
+    }, 500);
+  });
+}
+
+window.waitForElement = function waitForElement(selector, timeoutMs = 10000) {
+  return new Promise((resolve) => {
+    const el = document.querySelector(selector);
+    if (el) return resolve(el);
+
+    const observer = new MutationObserver(() => {
+      const el = document.querySelector(selector);
+      if (el) {
+        resolve(el);
+        observer.disconnect();
+      }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    setTimeout(() => {
+      observer.disconnect();
+      resolve(null);
+    }, timeoutMs);
+  });
+}
+
 })();

@@ -26,6 +26,16 @@ window.__FP_Selectors = {
     return null;
   },
 
+  getFirstValidIncludingHidden(key, context = document) {
+    const list = this.get(key);
+    for (const sel of list) {
+      if (!sel) continue;
+      const el = context.querySelector(sel);
+      if (el) return el;
+    }
+    return null;
+  },
+
   getAllValid(key, context = document) {
     const list = this.get(key);
     const results = [];
@@ -34,6 +44,19 @@ window.__FP_Selectors = {
       const nodes = context.querySelectorAll(sel);
       for (const node of nodes) {
         if (node.offsetParent !== null) results.push(node);
+      }
+    }
+    return results;
+  },
+
+  getAllValidIncludingHidden(key, context = document) {
+    const list = this.get(key);
+    const results = [];
+    for (const sel of list) {
+      if (!sel) continue;
+      const nodes = context.querySelectorAll(sel);
+      for (const node of nodes) {
+        results.push(node);
       }
     }
     return results;

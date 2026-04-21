@@ -1,14 +1,14 @@
 (function() {
 // ── captcha.js ────────────────────────────────────────────────────────────
 
-function getCaptchaToken() {
-  const cfs = __FP_Selectors.getAllValid("captchaTokenCloudflare");
+window.getCaptchaToken = function getCaptchaToken() {
+  const cfs = window.__FP_Selectors.getAllValidIncludingHidden("captchaTokenCloudflare");
   for (const cf of cfs) if (cf.value) return cf.value;
   
-  const ics = __FP_Selectors.getAllValid("captchaTokenIcon");
+  const ics = window.__FP_Selectors.getAllValidIncludingHidden("captchaTokenIcon");
   for (const ic of ics) if (ic.value) return ic.value;
   
-  if (__FP_Selectors.getFirstValid("captchaIconPassed")) return "iconcaptcha-passed";
+  if (window.__FP_Selectors.getFirstValidIncludingHidden("captchaIconPassed")) return "iconcaptcha-passed";
   
   return null;
 }
@@ -74,7 +74,11 @@ function clickElementRobust(el, label) {
   return true;
 }
 
-function tryClickCaptchaWidget() {
+window.tryClickCaptchaWidget = function tryClickCaptchaWidget() {
+  if (window.getCaptchaToken()) {
+    console.log("[FaucetPlugin]", "Captcha already solved, skipping interaction.");
+    return false;
+  }
   // 1. Try Turnstile Frames (Highest Priority)
   const turnstileFrames = __FP_Selectors.getAllValid("captchaFrames");
   for (const frame of turnstileFrames) {
@@ -97,7 +101,12 @@ function tryClickCaptchaWidget() {
 
   // 3. Fallbacks (Generic/hCaptcha/Icon)
   let widget = __FP_Selectors.getFirstValid("captchaHCaptchaWidget");
-  if (widget && isVisibleForClick(widget) && clickElementRobust(widget, "hCaptcha widget")) return true;
+  if (widget) {
+    if (isVisibleForClick(widget) && clickElementRobust(widget, "hCaptcha widget")) return true;
+  } else {
+    // If we're on a page that should have hCaptcha, this log helps debugging
+    console.log("[FaucetPlugin]", "hCaptcha widget not found in DOM yet.");
+  }
 
   widget = __FP_Selectors.getFirstValid("captchaIconWidget");
   if (widget && isVisibleForClick(widget) && clickElementRobust(widget, "IconCaptcha widget")) return true;
@@ -109,7 +118,7 @@ function tryClickCaptchaWidget() {
   return false;
 }
 
-async function rotateCaptchaType() {
+window.rotateCaptchaType = async function rotateCaptchaType() {
   const select = __FP_Selectors.getFirstValid("captchaSelect");
   if (!select) {
     console.log("[FaucetPlugin]", "Captcha rotation: No selection dropdown found");
@@ -145,11 +154,11 @@ async function rotateCaptchaType() {
   select.dispatchEvent(new Event('change', { bubbles: true }));
   
   // Wait a bit for the page to update the UI
-  await sleep(2000);
+  await window.sleep(2000);
   return true;
 }
 
-function hasCaptchaWidget() {
+window.hasCaptchaWidget = function hasCaptchaWidget() {
   return !!(
     __FP_Selectors.getFirstValid("captchaTurnstileWidget") ||
     __FP_Selectors.getFirstValid("captchaHCaptchaWidget") ||
@@ -176,7 +185,7 @@ window.waitForCaptchaToken = function waitForCaptchaToken(timeoutMs = window.__F
     const targetNode = document.body;
     const config = { attributes: true, childList: true, subtree: true };
     const observer = new MutationObserver(() => {
-      const t = getCaptchaToken();
+      const t = window.getCaptchaToken();
       if (t) {
         finish(t);
       }
@@ -192,7 +201,7 @@ window.waitForCaptchaToken = function waitForCaptchaToken(timeoutMs = window.__F
     }
 
     function pollCaptchaToken() {
-      const token = getCaptchaToken();
+      const token = window.getCaptchaToken();
       if (token) {
         finish(token);
         return;
@@ -210,7 +219,7 @@ window.waitForCaptchaToken = function waitForCaptchaToken(timeoutMs = window.__F
 
       if (readyToClick && (now - lastClickTime >= window.__FP_RETRY_MS) && clickAttempts < maxClickAttempts) {
         console.log("[FaucetPlugin]", `[FaucetPlugin] Triggering captcha interaction attempt ${clickAttempts + 1}...`);
-        const clicked = tryClickCaptchaWidget();
+        const clicked = window.tryClickCaptchaWidget();
         if (clicked) {
           lastClickTime = now;
           clickAttempts++;

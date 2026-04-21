@@ -41,11 +41,11 @@ class DiceAPI {
     if (!ready) {
       console.log("[FaucetPlugin]", "[Dice] Engine stuck — initiating Focus Reset");
       document.body.click(); // Click background to reset site focus
-      await sleep(500);
+      await window.sleep(500);
     }
     
     // Turbo Buffer: Let the site's JS process the amount change
-    await sleep(300); 
+    await window.sleep(300); 
 
     const started = placeDicebetRound();
     if (!started) throw new Error("roll-failed-to-start");
@@ -123,7 +123,7 @@ class WinStreakPyramid {
     // Wait for balance to settle (Turbo: 50ms polling)
     let balanceAfter = balanceBefore;
     for (let i = 0; i < 40; i++) {
-        await sleep(50);
+        await window.sleep(50);
         balanceAfter = await this.api.getBalance();
         if (balanceAfter !== balanceBefore) break;
     }
@@ -151,7 +151,7 @@ class WinStreakPyramid {
       // Optional: Pause after 5 consecutive losses
       if (this.lossStreak >= 5) {
           console.log("[FaucetPlugin]", `[Pyramid] High loss streak detected. Pausing for 30s...`);
-          await sleep(30000);
+          await window.sleep(30000);
           this.lossStreak = 0;
       }
     }
@@ -290,7 +290,7 @@ class DiceMomentumStrategy {
     // Wait for balance change
     let balanceAfter = balanceBefore;
     for (let i = 0; i < 40; i++) {
-        await sleep(50);
+        await window.sleep(50);
         balanceAfter = await this.api.getBalance();
         if (balanceAfter !== balanceBefore) break;
     }
@@ -540,7 +540,7 @@ class CombinedHighRollerStrategy {
 
 // ── Helpers & Entry Point ─────────────────────────────────────────────────────
 
-async function getDicebetConfig() {
+window.getDicebetConfig = async function getDicebetConfig() {
   const { settings, activeTabs = {}, claimHistory = {} } = await chrome.storage.local.get(["settings", "activeTabs", "claimHistory"]);
   const faucets = settings?.faucets || [];
   const faucet = faucets.find(f => {
@@ -548,7 +548,7 @@ async function getDicebetConfig() {
   });
   
   // Find current tab state to check for manual override
-  const tabData = Object.values(activeTabs).find(t => sameHost(t.faucetUrl, location.href));
+  const tabData = Object.values(activeTabs).find(t => window.sameHost(t.faucetUrl, location.href));
   const isManual = (location.hash === "#manual") || (tabData?.manualMode === true);
   
   const diceEnabled = isManual || (faucet?.dbEnabled === true);
@@ -594,7 +594,7 @@ async function setDicebetInputValue(input, value) {
   for (const char of str) {
     input.value += char;
     input.dispatchEvent(new Event("input", { bubbles: true }));
-    await sleep(20); 
+    await window.sleep(20); 
   }
   
   input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -643,9 +643,9 @@ function placeDicebetRound() {
 
 async function readDicebetBalanceWithRetries(maxRetries = 4, delayMs = 900) {
   for (let i = 0; i < maxRetries; i++) {
-    const bal = readBalance();
+    const bal = window.readBalance();
     if (bal != null) return bal;
-    await sleep(delayMs);
+    await window.sleep(delayMs);
   }
   return null;
 }
@@ -674,20 +674,23 @@ async function waitForDicebetIdle(maxWaitMs = 5000) {
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
     if (isDicebetIdle()) return true;
-    await sleep(20);
+    await window.sleep(20);
   }
   console.log("[FaucetPlugin]", "[Dice] Idle wait timeout — proceeding anyway (Forced Mode)");
   return true; // Forced fallback
 }
 
-async window.runDicebet = function runDicebet() {
+window.runDicebet = async function runDicebet() {
   window.auto_betting_status = "starting"; // Immediate lock
-  await sleep(1000); // 1s stability delay
+  
+  await window.waitForRocketLoaderHandlers();
+  await window.sleep(1000); // 1s stability delay
+
   
   console.log("[FaucetPlugin]", "[Turbo] MANUAL BOOTSTRAP INITIATED");
   await dicebetDiagnosticScan(); // Performance & Visibility Audit
   
-  sendPhaseHeartbeat("dice-start");
+  window.sendPhaseHeartbeat("dice-start");
 
   const config = await getDicebetConfig();
   const threshold = parseFloat(config.wdThreshold);
@@ -726,7 +729,7 @@ async window.runDicebet = function runDicebet() {
       const bal = await api.getBalance();
       if (bal == null) {
         console.log("[FaucetPlugin]", `[Dice] Waiting for balance to load...`);
-        await sleep(5000);
+        await window.sleep(5000);
         continue;
       }
       
@@ -744,7 +747,7 @@ async window.runDicebet = function runDicebet() {
         await api.setChance(allInCfg.chance || 49.5);
         await api.setSide(allInCfg.side || "higher");
         await api.roll();
-        await sleep(5000);
+        await window.sleep(5000);
         continue;
       }
 
@@ -763,7 +766,7 @@ async window.runDicebet = function runDicebet() {
           }
           if (res?.stop) break;
 
-          await sleep(100); 
+          await window.sleep(100); 
           const b = await api.getBalance();
           if (b >= threshold) return true;
         }
@@ -784,7 +787,7 @@ async window.runDicebet = function runDicebet() {
           }
           if (res?.stop) break;
 
-          await sleep(200); 
+          await window.sleep(200); 
           const b = await api.getBalance();
           if (b >= threshold) return true;
         }
@@ -796,7 +799,7 @@ async window.runDicebet = function runDicebet() {
         while (true) {
           const res = await momentum.runRound();
           if (res?.stop) break;
-          await sleep(200);
+          await window.sleep(200);
           const bal = await api.getBalance();
           if (bal >= threshold) return true;
         }
@@ -832,13 +835,13 @@ async window.runDicebet = function runDicebet() {
         await api.setSide(strategy.side);
         await api.roll();
         
-        await sleep(2000);
+        await window.sleep(2000);
         const balAfter = await api.getBalance();
         strategy.on_roll_result(balAfter > b, balAfter);
       }
     } catch (err) {
       console.log("[FaucetPlugin]", `[Dice] ENGINE CRASH DETECTED: ${err.message}. Rebooting in 5s...`);
-      await sleep(5000);
+      await window.sleep(5000);
     }
   }
 }

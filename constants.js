@@ -272,3 +272,53 @@ function makeFaucetDefaults() {
     { url: "https://polpick.io/",     coin: "POL",  label: "polpick",   active: false, referralId: "schnickfitzel",   intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: "10",     wdThresholdIsManual: false, wdMinDetected: "0", wdAddress: "", dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig(), dbPyramidConfig: getDefaultPyramidConfig(), dbMomentumConfig: DEFAULT_MOMENTUM_40_CONFIG }
   ];
 }
+
+// ── Global Namespace Export ──────────────────────────────────────────────────
+(function(scope) {
+  const exports = {
+    DICE_STRATEGY_ALL_IN_001,
+    DICE_STRATEGY_COMBINED_HIGH_ROLLER,
+    DICE_STRATEGY_PYRAMID,
+    DICE_STRATEGY_TIME_ACCUMULATOR,
+    DICE_STRATEGY_MOMENTUM_40,
+    DEFAULT_DB_STRATEGY,
+    DEFAULT_DB_SIDE,
+    DEFAULT_DB_CHANCE,
+    SCRAPE_WD_MIN_PATTERNS,
+    DEFAULT_USD5_WD_THRESHOLD_BY_HOST,
+    CRYPTO_PRICE_IDS,
+    DEFAULT_RANDOM_MIN,
+    DEFAULT_RANDOM_MAX,
+    DICE_CLAIM_BUFFER_MS,
+    STRATEGY_DEFAULTS,
+    DEFAULT_PYRAMID_CONFIG,
+    DEFAULT_HIGH_ROLLER_CONFIG,
+    DEFAULT_TIME_ACCUMULATOR_CONFIG,
+    DEFAULT_MOMENTUM_40_CONFIG,
+    DEFAULT_LONG_BREAK_ENABLED,
+    DEFAULT_LONG_BREAK_FREQUENCY,
+    DEFAULT_LONG_BREAK_MIN,
+    DEFAULT_LONG_BREAK_MAX,
+    DEFAULT_BOT_NAME,
+    normalizeHost,
+    normalizeUrl,
+    toFiniteNumber,
+    clampNumber,
+    normalizeDiceSide,
+    getPriceIdForHost,
+    normalizeDbStrategy,
+    normalizeDbChance,
+    getDefaultHighRollerConfig,
+    getDefaultPyramidConfig,
+    getDefaultTimeAccumulatorConfig,
+    getDefaultWdThresholdForUrl,
+    normalizeWdThresholdForUrl,
+    normalizeHighRollerConfig,
+    normalizePyramidConfig,
+    makeFaucetDefaults
+  };
+
+  for (const [key, val] of Object.entries(exports)) {
+    scope[key] = val;
+  }
+})(typeof window !== 'undefined' ? window : self);
