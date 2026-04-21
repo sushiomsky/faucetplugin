@@ -67,7 +67,7 @@ async function refreshStatus() {
   isStatusRefreshing = true;
   try {
   const stored = await chrome.storage.local.get([
-    "running", "settings", "activityLog", "activeTabs", "claimHistory", 
+    "running", "settings", "activityLog", "activeTabs", "claimHistory", "exactCooldowns",
     "cryptoPrices", "minWdThresholds", "updateAvailable", "updateVersion", "updateUrl", "claimCounts"
   ]);
   
@@ -75,6 +75,7 @@ async function refreshStatus() {
   const enabled      = settings.enabled !== false;
   const activeTabs   = stored.activeTabs || {};
   const claimHistory = stored.claimHistory || {};
+  const exactCooldowns = stored.exactCooldowns || {};
   const log          = stored.activityLog || [];
   
   // Ensure we have a list to render even if loadSettings is still working
@@ -116,13 +117,27 @@ async function refreshStatus() {
     const tabEntry = Object.values(activeTabs).find(t => hostname(t.faucetUrl) === host);
     const lastLog = log.find(e => hostname(e.url) === host);
     const lastClaim = claimHistory[f.url] || 0;
+    const exactCooldown = exactCooldowns[f.url] || 0;
     const intervalMs = (f.intervalMinutes || 61) * 60000;
-    const nextDue = lastClaim + intervalMs;
-    const timeLeft = nextDue - now;
+    
+    let timeLeft = 0;
+    if (exactCooldown > 0) {
+      timeLeft = exactCooldown - now;
+    } else {
+      timeLeft = (lastClaim + intervalMs) - now;
+    }
     
     let perc = 0;
-    if (timeLeft > 0) perc = Math.max(0, Math.min(100, Math.round(((intervalMs - timeLeft) / intervalMs) * 100)));
-    else perc = 100;
+    if (timeLeft > 0) {
+      if (exactCooldown > 0) {
+        // approximate progress for exact cooldown based on default 61 mins
+        perc = Math.max(0, Math.min(100, Math.round(((intervalMs - timeLeft) / intervalMs) * 100)));
+      } else {
+        perc = Math.max(0, Math.min(100, Math.round(((intervalMs - timeLeft) / intervalMs) * 100)));
+      }
+    } else {
+      perc = 100;
+    }
     const offset = 201 - (2.01 * perc);
 
     // Live balance from scraper takes priority over historical log
@@ -176,14 +191,14 @@ async function refreshStatus() {
     const isLoggedIn = faucetLoginStates[f.url];
     const detectedMin = minWdThresholds[host];
     const balance = faucetBalances[f.url];
-
     const card = document.createElement("div");
-    card.style = "background:var(--panel); border:1px solid var(--glass-border); border-radius:15px; padding:12px 15px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;";
+    card.className = "history-item";
+    card.style.cursor = "pointer";
     card.innerHTML = `
-      <div style="display:flex; align-items:center; gap:12px;">
-        <div style="width:32px; height:32px; border-radius:8px; background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; color:var(--accent);">${f.label[0].toUpperCase()}</div>
+      <div style="display:flex; align-items:center; gap:12px; flex:1;">
+        <div class="token-icon" style="background:var(--glass-border); width:32px; height:32px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; color:var(--accent);">${f.coin || f.label[0].toUpperCase()}</div>
         <div>
-          <div style="font-size:12px; font-weight:700;">${f.coin || f.label.toUpperCase()}</div>
+          <div style="font-size:12px; font-weight:700;">${host}</div>
           <div style="display:flex; gap:5px; align-items:center;">
             <div style="font-size:9px; color:${isLoggedIn ? 'var(--status-ok)' : 'var(--status-err)'}; font-weight:700; text-transform:uppercase;">${isLoggedIn ? 'LOGGED IN' : 'LOGIN REQ.'}</div>
             ${balance ? `<div style="font-size:9px; color:#fff; font-weight:700; background:rgba(255,255,255,0.05); padding:2px 6px; border-radius:4px;">${balance}</div>` : ""}
@@ -521,8 +536,9 @@ function renderConfigForSite(index) {
             <option value="${DICE_STRATEGY_COMBINED_HIGH_ROLLER}" ${f.dbStrategy === DICE_STRATEGY_COMBINED_HIGH_ROLLER ? "selected" : ""}>Combined High Roller</option>
             <option value="${DICE_STRATEGY_PYRAMID}" ${f.dbStrategy === DICE_STRATEGY_PYRAMID ? "selected" : ""}>Win-Streak Pyramid</option>
             <option value="${DICE_STRATEGY_TIME_ACCUMULATOR}" ${f.dbStrategy === DICE_STRATEGY_TIME_ACCUMULATOR ? "selected" : ""}>Time-Accumulator</option>
+            <option value="${DICE_STRATEGY_MOMENTUM_40}" ${f.dbStrategy === DICE_STRATEGY_MOMENTUM_40 ? "selected" : ""}>Momentum (40%)</option>
           </select>
-        </div>
+</div>
 
         <div id="allInConfig" style="display:${f.dbStrategy === DICE_STRATEGY_ALL_IN_001 ? 'flex' : 'none'}; flex-direction:column; gap:12px; background:rgba(255,255,255,0.02); padding:10px; border-radius:12px; border:1px solid var(--glass-border);">
           <div class="input-row">
@@ -645,6 +661,36 @@ function renderConfigForSite(index) {
             <input type="number" id="taSeed" value="${f.dbTimeAccumulatorConfig?.safety_floor_pct || 0.05}" step="any">
           </div>
         </div>
+
+        <div id="momentumConfig" style="display:${f.dbStrategy === DICE_STRATEGY_MOMENTUM_40 ? 'flex' : 'none'}; flex-direction:column; gap:8px; background:rgba(255,255,255,0.02); padding:10px; border-radius:12px; border:1px solid var(--glass-border);">
+          <div class="input-row">
+            <div class="field">
+              <label class="label" style="font-size:9px;">Side</label>
+              <select id="momSide">
+                <option value="higher" ${f.dbMomentumConfig?.side !== "lower" ? "selected" : ""}>Over</option>
+                <option value="lower" ${f.dbMomentumConfig?.side === "lower" ? "selected" : ""}>Under</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="label" style="font-size:9px;">Win %</label>
+              <input type="number" id="momChance" value="${f.dbMomentumConfig?.chance || 40.0}" step="0.01">
+            </div>
+          </div>
+          <div class="input-row">
+            <div class="field">
+              <label class="label" style="font-size:9px;">Base Bet %</label>
+              <input type="number" id="momBase" value="${f.dbMomentumConfig?.base_bet_pct || 2.0}" step="any">
+            </div>
+            <div class="field">
+              <label class="label" style="font-size:9px;">Multiplier</label>
+              <input type="number" id="momMult" value="${f.dbMomentumConfig?.multiplier || 1.25}" step="any">
+            </div>
+          </div>
+          <div class="field">
+             <label class="label" style="font-size:9px;">Max Increases</label>
+             <input type="number" id="momMaxInc" value="${f.dbMomentumConfig?.max_increases || 3}">
+          </div>
+        </div>
       </div>
     </div>
 
@@ -713,6 +759,8 @@ function renderConfigForSite(index) {
     if (hrConfig) hrConfig.style.display = e.target.value === DICE_STRATEGY_COMBINED_HIGH_ROLLER ? "flex" : "none";
     const taConfig = card.querySelector("#timeAccumulatorConfig");
     if (taConfig) taConfig.style.display = e.target.value === DICE_STRATEGY_TIME_ACCUMULATOR ? "flex" : "none";
+    const momConfig = card.querySelector("#momentumConfig");
+    if (momConfig) momConfig.style.display = e.target.value === DICE_STRATEGY_MOMENTUM_40 ? "flex" : "none";
     f.dbStrategy = e.target.value;
   });
 
@@ -744,6 +792,7 @@ function renderConfigForSite(index) {
       card.querySelector("#pyramidConfig").style.display = f.dbStrategy === DICE_STRATEGY_PYRAMID ? "flex" : "none";
       card.querySelector("#highRollerConfig").style.display = f.dbStrategy === DICE_STRATEGY_COMBINED_HIGH_ROLLER ? "flex" : "none";
       card.querySelector("#timeAccumulatorConfig").style.display = f.dbStrategy === DICE_STRATEGY_TIME_ACCUMULATOR ? "flex" : "none";
+      card.querySelector("#momentumConfig").style.display = f.dbStrategy === DICE_STRATEGY_MOMENTUM_40 ? "flex" : "none";
 
       // All-In Mapping
       if (!f.dbAllInConfig) f.dbAllInConfig = {};
@@ -790,6 +839,19 @@ function renderConfigForSite(index) {
       if (!f.dbTimeAccumulatorConfig) f.dbTimeAccumulatorConfig = {};
       const taSideEl = card.querySelector("#taSide");
       if (taSideEl) f.dbTimeAccumulatorConfig.side = taSideEl.value;
+
+      // Momentum Mapping
+      if (!f.dbMomentumConfig) f.dbMomentumConfig = {};
+      const momSideEl = card.querySelector("#momSide");
+      if (momSideEl) f.dbMomentumConfig.side = momSideEl.value;
+      const momChanceEl = card.querySelector("#momChance");
+      if (momChanceEl) f.dbMomentumConfig.chance = parseFloat(momChanceEl.value);
+      const momBaseEl = card.querySelector("#momBase");
+      if (momBaseEl) f.dbMomentumConfig.base_bet_pct = parseFloat(momBaseEl.value);
+      const momMultEl = card.querySelector("#momMult");
+      if (momMultEl) f.dbMomentumConfig.multiplier = parseFloat(momMultEl.value);
+      const momMaxEl = card.querySelector("#momMaxInc");
+      if (momMaxEl) f.dbMomentumConfig.max_increases = parseInt(momMaxEl.value);
       const taChanceEl = card.querySelector("#taChance");
       if (taChanceEl) f.dbTimeAccumulatorConfig.chance = parseFloat(taChanceEl.value);
       const taMinFracEl = card.querySelector("#taMinFrac");

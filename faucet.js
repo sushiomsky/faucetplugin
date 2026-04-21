@@ -271,18 +271,20 @@ async function runFaucet() {
   const dbConfig = await getDicebetConfig();
   const stopDiceHangWatchdog = startDiceHangWatchdog(dbConfig.enabled);
 
-  await sleep(2000);
-
   try {
     scrollToBottom();
-    await sleep(1000);
 
     // 0. Check for cooldown immediately to save time/captchas
+    const cooldownReadTime = Date.now();
     const initialWait = detectCooldown();
     if (initialWait !== null) {
-      log(`Faucet is already on cooldown: ${Math.ceil(initialWait)} min. Reporting and aborting.`);
-      chrome.runtime.sendMessage({ type: "faucet-cooldown", waitMinutes: Math.ceil(initialWait) });
-      return;
+      if (initialWait > 2.5) {
+        log(`Faucet is on long cooldown: ${initialWait} min. Reporting and aborting.`);
+        chrome.runtime.sendMessage({ type: "faucet-cooldown", waitMinutes: initialWait });
+        return;
+      } else {
+        log(`Faucet cooldown is short (${initialWait} min). Staying on page to prepare early.`);
+      }
     }
 
     // 1. Solve Captcha if present (required for both hourly and some bonus claim types)
@@ -311,6 +313,27 @@ async function runFaucet() {
       captchaResolved = true;
     }
 
+    // 1.5 Wait for precise timer using robust system clock (avoids frozen DOM clock in background)
+    if (initialWait !== null && initialWait <= 2.5) {
+      const waitMs = initialWait * 60 * 1000;
+      const targetTime = cooldownReadTime + waitMs;
+      
+      log(`Waiting for exact expiration at system time... (${(waitMs/1000).toFixed(1)}s total)`);
+      while (true) {
+        const remaining = targetTime - Date.now();
+        if (remaining <= 0) break;
+        
+        if (remaining > 10000) {
+          chrome.runtime.sendMessage({ type: "phase-heartbeat" });
+          await sleep(5000);
+        } else {
+          await sleep(Math.max(10, remaining));
+          break;
+        }
+      }
+      log("Exact cooldown has been reached! Claiming...");
+    }
+
     // 2. Attempt Hourly Faucet
     const hourlyClaimed = await tryClaimHourlyFaucet();
     if (hourlyClaimed) {
@@ -331,9 +354,7 @@ async function runFaucet() {
       return;
     }
 
-    const delay = randomDelay();
-    log(`Faucet cycle completed, waiting ${(delay/1000).toFixed(1)}s`);
-    await sleep(delay);
+    log(`Faucet cycle completed.`);
 
     sendDone(balance);
   } finally {

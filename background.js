@@ -153,8 +153,9 @@ async function checkAndRun(forceAll = false) {
     return;
   }
 
-  const state = await chrome.storage.local.get(["claimHistory", "activeTabs", "claimQueue", "running"]);
+  const state = await chrome.storage.local.get(["claimHistory", "exactCooldowns", "activeTabs", "claimQueue", "running"]);
   const claimHistory = state.claimHistory || {};
+  const exactCooldowns = state.exactCooldowns || {};
   const activeTabs = state.activeTabs || {};
   const claimQueue = Array.isArray(state.claimQueue) ? state.claimQueue : [];
   const schedulerRunning = state.running === true;
@@ -276,6 +277,7 @@ async function checkAndRun(forceAll = false) {
       continue;
     }
     const lastClaimed = claimHistory[f.url] || 0;
+    const exactCooldown = exactCooldowns[f.url] || 0;
     const intervalMs  = (f.intervalMinutes || 61) * 60 * 1000;
     
     // Check for Long Break
@@ -295,12 +297,27 @@ async function checkAndRun(forceAll = false) {
 
     const randomOffset = Math.floor(Math.random() * (maxRand - minRand + 1)) + minRand;
     
-    const isDue       = forceAll || (now - lastClaimed) >= (intervalMs + randomOffset);
+    let isDue = false;
+    let timeUntilDue = 0;
+
+    if (exactCooldown > 0) {
+      const waitTarget = exactCooldown - (2 * 60 * 1000);
+      isDue = forceAll || now >= waitTarget;
+      timeUntilDue = Math.max(0, waitTarget - now);
+      if (isDue) {
+        delete exactCooldowns[f.url];
+        // We defer saving exactCooldowns until we run chrome.storage.local.set below
+      }
+    } else {
+      const waitTarget = lastClaimed + intervalMs + randomOffset - (2 * 60 * 1000);
+      isDue = forceAll || now >= waitTarget;
+      timeUntilDue = Math.max(0, waitTarget - now);
+    }
+    
     const isRunning   = Object.values(activeTabs).some(t => sameHost(t.faucetUrl, f.url));
     const isQueued    = claimQueue.some(url => sameHost(url, f.url));
-    const timeUntilDue = Math.max(0, (lastClaimed + intervalMs + randomOffset) - now);
     
-    console.log(`[Faucet] ${f.url} — isDue=${isDue}, isRunning=${isRunning}, isQueued=${isQueued}, nextIn=${(timeUntilDue/1000/60).toFixed(1)}min (+rand)`);
+    console.log(`[Faucet] ${f.url} — isDue=${isDue}, isRunning=${isRunning}, isQueued=${isQueued}, nextIn=${(timeUntilDue/1000/60).toFixed(1)}min ${exactCooldown > 0 ? '(EXACT)' : '(+rand)'}`);
     
     if (isDue && !isRunning && !isQueued) {
       dueFaucets.push(f);
@@ -359,7 +376,7 @@ async function checkAndRun(forceAll = false) {
   }
 
   if (stateDirty || claimQueue.length > 0 || !schedulerRunning) {
-    await chrome.storage.local.set({ activeTabs, claimQueue, running: true });
+    await chrome.storage.local.set({ activeTabs, claimQueue, exactCooldowns, running: true });
   }
 }
 
@@ -495,7 +512,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // ── Alarm handler ─────────────────────────────────────────────────────────────
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === ALARM_NAME) requestCheckAndRun();
+  if (alarm.name === ALARM_NAME) {
+    requestCheckAndRun();
+  } else if (alarm.name.startsWith("exact-")) {
+    requestCheckAndRun();
+  }
 });
 
 // ── Install / startup ─────────────────────────────────────────────────────────
@@ -641,10 +662,10 @@ async function handleMessage(msg, sender) {
   // ── Popup messages (no tab) ──────────────────────────────────────────────
   if (msg.type === "manual-run") {
     // Reset claimHistory for all active faucets so they are treated as due
-    const { claimHistory = {} } = await chrome.storage.local.get("claimHistory");
+    const { claimHistory = {}, exactCooldowns = {} } = await chrome.storage.local.get(["claimHistory", "exactCooldowns"]);
     const s = await getSettings();
-    for (const f of s.faucets) { if (f.active !== false) claimHistory[f.url] = 0; }
-    await chrome.storage.local.set({ claimHistory });
+    for (const f of s.faucets) { if (f.active !== false) { claimHistory[f.url] = 0; delete exactCooldowns[f.url]; } }
+    await chrome.storage.local.set({ claimHistory, exactCooldowns });
     requestCheckAndRun(true);
     return;
   }
@@ -693,7 +714,7 @@ async function handleMessage(msg, sender) {
     const faucets = makeFaucetDefaults();
     faucets[0].active = true; // enable litepick as a starting point
     const defaultSettings = { enabled: true, faucets };
-    await chrome.storage.local.set({ settings: defaultSettings, claimHistory: {}, claimQueue: [], activeTabs: {}, running: true });
+    await chrome.storage.local.set({ settings: defaultSettings, claimHistory: {}, exactCooldowns: {}, claimQueue: [], activeTabs: {}, running: true });
     ensureTickAlarm();
     requestCheckAndRun(true);
     log("[Faucet] All sites reset to enabled with cleared history");
@@ -785,7 +806,6 @@ async function handleMessage(msg, sender) {
     return;
   }
 
-  // ── faucet-cooldown ───────────────────────────────────────────────────────
   if (msg.type === "faucet-cooldown") {
     const targetUrl = msg.url || tabData?.faucetUrl;
     if (!targetUrl) return;
@@ -794,11 +814,14 @@ async function handleMessage(msg, sender) {
     log(`[Faucet] ${host} reported cooldown: ${msg.waitMinutes}min`);
     
     const waitMs = (msg.waitMinutes || 60) * 60 * 1000;
-    // Update history to now + (timer - interval) so nextDue = now + timer
-    const intervalMs = (cfg?.intervalMinutes || 61) * 60 * 1000;
-    claimHistory[targetUrl] = (Date.now() + waitMs) - intervalMs;
+    const { exactCooldowns = {} } = await chrome.storage.local.get("exactCooldowns");
+    const exactTime = Date.now() + waitMs;
+    exactCooldowns[targetUrl] = exactTime;
     
-    await chrome.storage.local.set({ claimHistory });
+    await chrome.storage.local.set({ exactCooldowns });
+
+    // Schedule exact alarm 2 minutes before the actual target
+    chrome.alarms.create(`exact-${host}`, { when: exactTime - (2 * 60 * 1000) });
 
     if (!msg.silent) {
         await appendLog({ 

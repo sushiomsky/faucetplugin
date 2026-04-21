@@ -8,6 +8,7 @@ const DICE_STRATEGY_ALL_IN_001             = "all-in-0.1";
 const DICE_STRATEGY_COMBINED_HIGH_ROLLER   = "combined-high-roller";
 const DICE_STRATEGY_PYRAMID                = "win-streak-pyramid";
 const DICE_STRATEGY_TIME_ACCUMULATOR       = "time-accumulator";
+const DICE_STRATEGY_MOMENTUM_40            = "momentum-40";
 const DEFAULT_DB_STRATEGY                  = DICE_STRATEGY_ALL_IN_001;
 const DEFAULT_DB_SIDE                      = "higher";
 const DEFAULT_DB_CHANCE                    = "1";
@@ -64,6 +65,13 @@ const STRATEGY_DEFAULTS = Object.freeze({
     history_window: 10,
     streak_trigger: 1,
     volatility_trigger: 4
+  },
+  [DICE_STRATEGY_MOMENTUM_40]: {
+    chance: 40.0,
+    side: 'higher',
+    base_bet_pct: 2.0,
+    multiplier: 1.25,
+    max_increases: 3
   }
 });
 
@@ -89,6 +97,13 @@ const DEFAULT_TIME_ACCUMULATOR_CONFIG = Object.freeze({
   min_bet_fraction: 0.01,
   max_bet_fraction: 0.90,
   safety_floor_pct: 0.05
+});
+
+const DEFAULT_MOMENTUM_40_CONFIG = Object.freeze({
+  chance: 40.0,
+  base_bet_pct: 2.0,
+  multiplier: 1.25,
+  max_increases: 3
 });
 
 // ── Anti-Detection & Timing Defaults ─────────────────────────────────────────
@@ -138,6 +153,7 @@ function normalizeDbStrategy(rawStrategy, dbEnabled = false) {
   if (normalized === DICE_STRATEGY_COMBINED_HIGH_ROLLER) return DICE_STRATEGY_COMBINED_HIGH_ROLLER;
   if (normalized === DICE_STRATEGY_PYRAMID) return DICE_STRATEGY_PYRAMID;
   if (normalized === DICE_STRATEGY_TIME_ACCUMULATOR) return DICE_STRATEGY_TIME_ACCUMULATOR;
+  if (normalized === DICE_STRATEGY_MOMENTUM_40) return DICE_STRATEGY_MOMENTUM_40;
   return DEFAULT_DB_STRATEGY;
 }
 
@@ -239,11 +255,11 @@ function normalizePyramidConfig(rawConfig = {}) {
 // background.js and popup.js both use this to initialise / reset settings.
 function makeFaucetDefaults() {
   return [
-    { url: "https://litepick.io/",    coin: "LTC",  label: "litepick",  active: false, referralId: "frankgoosen",    intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: "0.05",   wdThresholdIsManual: false, wdMinDetected: "0", wdAddress: "", dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig(), dbPyramidConfig: getDefaultPyramidConfig() },
-    { url: "https://dogepick.io/",    coin: "DOGE", label: "dogepick",  active: false, referralId: "schnickfitzel2", intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: "30",     wdThresholdIsManual: false, wdMinDetected: "0", wdAddress: "", dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig(), dbPyramidConfig: getDefaultPyramidConfig() },
-    { url: "https://solpick.io/",     coin: "SOL",  label: "solpick",   active: false, referralId: "tstehg",         intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: "0.0325", wdThresholdIsManual: false, wdMinDetected: "0", wdAddress: "", dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig(), dbPyramidConfig: getDefaultPyramidConfig() },
-    { url: "https://bnbpick.io/",     coin: "BNB",  label: "bnbpick",   active: false, referralId: "schnickfitzel",   intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: "0.009",  wdThresholdIsManual: false, wdMinDetected: "0", wdAddress: "", dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig(), dbPyramidConfig: getDefaultPyramidConfig() },
-    { url: "https://tronpick.io/",    coin: "TRX",  label: "tronpick",  active: false, referralId: "schnickfitzel",   intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: "40",     wdThresholdIsManual: false, wdMinDetected: "0", wdAddress: "", dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig(), dbPyramidConfig: getDefaultPyramidConfig() },
-    { url: "https://polpick.io/",     coin: "POL",  label: "polpick",   active: false, referralId: "schnickfitzel",   intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: "10",     wdThresholdIsManual: false, wdMinDetected: "0", wdAddress: "", dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig(), dbPyramidConfig: getDefaultPyramidConfig() }
+    { url: "https://litepick.io/",    coin: "LTC",  label: "litepick",  active: false, referralId: "frankgoosen",    intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: "0.05",   wdThresholdIsManual: false, wdMinDetected: "0", wdAddress: "", dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig(), dbPyramidConfig: getDefaultPyramidConfig(), dbMomentumConfig: DEFAULT_MOMENTUM_40_CONFIG },
+    { url: "https://dogepick.io/",    coin: "DOGE", label: "dogepick",  active: false, referralId: "schnickfitzel2", intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: "30",     wdThresholdIsManual: false, wdMinDetected: "0", wdAddress: "", dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig(), dbPyramidConfig: getDefaultPyramidConfig(), dbMomentumConfig: DEFAULT_MOMENTUM_40_CONFIG },
+    { url: "https://solpick.io/",     coin: "SOL",  label: "solpick",   active: false, referralId: "tstehg",         intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: "0.0325", wdThresholdIsManual: false, wdMinDetected: "0", wdAddress: "", dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig(), dbPyramidConfig: getDefaultPyramidConfig(), dbMomentumConfig: DEFAULT_MOMENTUM_40_CONFIG },
+    { url: "https://bnbpick.io/",     coin: "BNB",  label: "bnbpick",   active: false, referralId: "schnickfitzel",   intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: "0.009",  wdThresholdIsManual: false, wdMinDetected: "0", wdAddress: "", dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig(), dbPyramidConfig: getDefaultPyramidConfig(), dbMomentumConfig: DEFAULT_MOMENTUM_40_CONFIG },
+    { url: "https://tronpick.io/",    coin: "TRX",  label: "tronpick",  active: false, referralId: "schnickfitzel",   intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: "40",     wdThresholdIsManual: false, wdMinDetected: "0", wdAddress: "", dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig(), dbPyramidConfig: getDefaultPyramidConfig(), dbMomentumConfig: DEFAULT_MOMENTUM_40_CONFIG },
+    { url: "https://polpick.io/",     coin: "POL",  label: "polpick",   active: false, referralId: "schnickfitzel",   intervalMinutes: 61, minRandomMinutes: DEFAULT_RANDOM_MIN, maxRandomMinutes: DEFAULT_RANDOM_MAX, username: "", password: "", wdEnabled: true, wdThreshold: "10",     wdThresholdIsManual: false, wdMinDetected: "0", wdAddress: "", dbEnabled: false, dbChance: DEFAULT_DB_CHANCE, dbSide: DEFAULT_DB_SIDE, dbStrategy: DEFAULT_DB_STRATEGY, dbStrategyConfig: getDefaultHighRollerConfig(), dbPyramidConfig: getDefaultPyramidConfig(), dbMomentumConfig: DEFAULT_MOMENTUM_40_CONFIG }
   ];
 }

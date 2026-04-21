@@ -216,6 +216,69 @@ class TimeAccumulatorStrategy {
   }
 }
 
+/**
+ * DiceMomentumStrategy
+ * 40% Win Chance, 2% Base Bet, 1.25x increase on win (max 3), reset on loss.
+ */
+class DiceMomentumStrategy {
+  constructor(config, api, logger = log) {
+    this.config = config || { ...DEFAULT_MOMENTUM_40_CONFIG };
+    this.api = api;
+    this.logger = logger;
+    this.winStreak = 0;
+    this.isInitialized = false;
+  }
+
+  async init() {
+    this.isInitialized = true;
+    this.logger(`[Momentum] Initialized. Win Chance: ${this.config.chance}% | Base Bet: ${this.config.base_bet_pct}%`);
+  }
+
+  calculateBet(currentBalance) {
+    const baseBet = currentBalance * (this.config.base_bet_pct / 100);
+    const multiplier = Math.pow(this.config.multiplier, Math.min(this.winStreak, this.config.max_increases));
+    const bet = baseBet * multiplier;
+    return Math.max(bet, 0.00000001); // Safety floor
+  }
+
+  async runRound() {
+    if (!this.isInitialized) await this.init();
+
+    const currentBalance = await this.api.getBalance();
+    if (currentBalance <= 0) return { stop: true, reason: "zero-balance" };
+
+    const betAmount = this.calculateBet(currentBalance);
+    
+    this.logger(`[Momentum] Streak: ${this.winStreak} | Bet: ${betAmount.toFixed(8)} | Bal: ${currentBalance.toFixed(8)}`);
+
+    await this.api.setBetAmount(betAmount);
+    await this.api.setChance(this.config.chance);
+    await this.api.setSide(this.config.side || "higher");
+
+    const balanceBefore = await this.api.getBalance();
+    await this.api.roll();
+
+    // Wait for balance change
+    let balanceAfter = balanceBefore;
+    for (let i = 0; i < 40; i++) {
+        await sleep(50);
+        balanceAfter = await this.api.getBalance();
+        if (balanceAfter !== balanceBefore) break;
+    }
+    const win = balanceAfter > balanceBefore;
+
+    if (win) {
+      this.winStreak++;
+      this.logger(`[Momentum] WIN! Streak is now ${this.winStreak}`);
+    } else {
+      this.winStreak = 0;
+      this.logger(`[Momentum] LOSS. Resetting streak.`);
+    }
+
+    return { stop: false };
+  }
+}
+
 // ── Legacy Strategy Support ───────────────────────────────────────────────────
 
 class CombinedHighRollerStrategy {
@@ -457,6 +520,8 @@ async function getDicebetConfig() {
     strategyConfig = { ...DEFAULT_PYRAMID_CONFIG, ...(faucet?.dbPyramidConfig || {}) };
   } else if (strategy === DICE_STRATEGY_TIME_ACCUMULATOR) {
     strategyConfig = { ...DEFAULT_TIME_ACCUMULATOR_CONFIG, ...(faucet?.dbTimeAccumulatorConfig || {}) };
+  } else if (strategy === DICE_STRATEGY_MOMENTUM_40) {
+    strategyConfig = { ...DEFAULT_MOMENTUM_40_CONFIG, ...(faucet?.dbMomentumConfig || {}) };
   } else {
     strategyConfig = faucet?.dbStrategyConfig || getDefaultHighRollerConfig();
   }
@@ -644,6 +709,19 @@ async function runDicebet() {
           const bal = await api.getBalance();
           if (bal >= threshold) return true;
         }
+      }
+
+      // Dice Momentum Strategy
+      if (config.strategy === DICE_STRATEGY_MOMENTUM_40) {
+        const momentum = new DiceMomentumStrategy(config.strategyConfig, api, log);
+        while (true) {
+          const res = await momentum.runRound();
+          if (res?.stop) break;
+          await sleep(200);
+          const bal = await api.getBalance();
+          if (bal >= threshold) return true;
+        }
+        // Fallthrough if stopped
       }
 
       // Default / Combined High Roller Strategy
