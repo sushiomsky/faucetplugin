@@ -4,8 +4,8 @@ async function main() {
   const isWithdraw = /withdraw/i.test(location.pathname);
   
   if (isWithdraw) {
-    console.log("[FaucetPlugin] 🛡️ Withdrawal page detected. Entering 5s Silent Settling...");
-    await sleep(5000);
+    console.log("[FaucetPlugin] 🛡️ Withdrawal page detected. Entering 8s Silent Settling...");
+    await sleep(8000);
   } else {
     await sleep(1000); 
   }

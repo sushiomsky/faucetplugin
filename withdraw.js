@@ -114,6 +114,10 @@ async function runWithdraw(address) {
     log("Clicked max_amount");
   }
 
+  log("Preparing viewport: scrolling to bottom...");
+  scrollToBottom();
+  await sleep(1000); 
+
   log("Waiting for withdrawal captcha…");
   chrome.runtime.sendMessage({ type: "focus-tab" });
   await sleep(3000); // Initial settlement period
@@ -130,6 +134,11 @@ async function runWithdraw(address) {
   }
 
   if (!submitBtn) { sendWdError("no-submit-button"); return; }
+
+  // FINAL VISIBILITY SYNC: ensure button is in view before clicking
+  log("Ensuring button is visible in viewport...");
+  submitBtn.scrollIntoView({ behavior: "smooth", block: "center" });
+  await sleep(1000);
 
   // FINAL SYNC: Wait for Rocket Loader to "unblock" the button's onclick handler
   log("Final synchronization: waiting for Rocket Loader...");
