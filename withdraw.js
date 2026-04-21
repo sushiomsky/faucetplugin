@@ -114,8 +114,8 @@ async function runWithdraw(address) {
     log("Clicked max_amount");
   }
 
-  log("Preparing viewport: scrolling to bottom...");
-  scrollToBottom();
+  log("Preparing viewport: scrolling 150px down...");
+  window.scrollBy({ top: 150, behavior: "smooth" });
   await sleep(1000); 
 
   log("Waiting for withdrawal captcha…");
@@ -124,7 +124,7 @@ async function runWithdraw(address) {
   const token = await waitForCaptchaToken();
   if (!token) { sendWdError("withdraw-captcha-timeout"); return; }
   log("Withdrawal captcha resolved");
-  await sleep(800);
+  await sleep(1000);
 
   let submitBtn = SiteSelectors.getAllValid("withdrawSubmitBtnFallback").find(b =>
       /withdraw|send|submit/i.test(b.textContent)
@@ -137,7 +137,7 @@ async function runWithdraw(address) {
 
   // FINAL VISIBILITY SYNC: ensure button is in view before clicking
   log("Ensuring button is visible in viewport...");
-  submitBtn.scrollIntoView({ behavior: "smooth", block: "center" });
+  submitBtn.scrollIntoView({ behavior: "smooth", block: "nearest" });
   await sleep(1000);
 
   // FINAL SYNC: Wait for Rocket Loader to "unblock" the button's onclick handler
