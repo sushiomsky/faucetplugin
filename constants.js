@@ -45,6 +45,7 @@ const CRYPTO_PRICE_IDS = Object.freeze({
 // ── Random timing defaults ───────────────────────────────────────────────────
 const DEFAULT_RANDOM_MIN = 0;
 const DEFAULT_RANDOM_MAX = 5;
+const DICE_CLAIM_BUFFER_MS = 2 * 60 * 1000; // 2 minute safety window
 
 const STRATEGY_DEFAULTS = Object.freeze({
   [DICE_STRATEGY_PYRAMID]: {
@@ -80,7 +81,8 @@ const DEFAULT_PYRAMID_CONFIG = Object.freeze({
   multiplier:        2.0,
   max_level:         5,
   drop_levels:       2,
-  switch_on_loss:    true
+  switch_on_loss:    true,
+  min_bet:           0.00000001
 });
 
 const DEFAULT_HIGH_ROLLER_CONFIG = Object.freeze({
@@ -89,14 +91,16 @@ const DEFAULT_HIGH_ROLLER_CONFIG = Object.freeze({
   max_ladder_depth: 5,
   history_window: 10,
   streak_trigger: 1,
-  volatility_trigger: 4
+  volatility_trigger: 4,
+  min_bet: 0.00000001
 });
 
 const DEFAULT_TIME_ACCUMULATOR_CONFIG = Object.freeze({
   chance: 50,
   min_bet_fraction: 0.01,
   max_bet_fraction: 0.90,
-  safety_floor_pct: 0.05
+  safety_floor_pct: 0.05,
+  min_bet: 0.00000001
 });
 
 const DEFAULT_MOMENTUM_40_CONFIG = Object.freeze({
@@ -107,7 +111,8 @@ const DEFAULT_MOMENTUM_40_CONFIG = Object.freeze({
   lottery_enabled: false,
   lottery_frequency: 100,
   lottery_win_chance: 0.5,
-  lottery_safe_mode: true
+  lottery_safe_mode: true,
+  min_bet: 0.00000001
 });
 
 // ── Anti-Detection & Timing Defaults ─────────────────────────────────────────

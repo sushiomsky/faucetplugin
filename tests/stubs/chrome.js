@@ -40,7 +40,7 @@ window.chrome.storage = {
 window.chrome.runtime = {
   sendMessage: () => {},
   lastError: null,
-  getManifest: () => ({ version: '2.8.1', name: 'FaucetPick Test' })
+  getManifest: () => ({ version: '2.9.0', name: 'FaucetPick Test' })
 };
 
 window.chrome.alarms = {

@@ -106,6 +106,12 @@ class WinStreakPyramid {
     
     this.logger(`[Pyramid] Level: ${this.level} | Bet: ${currentBet.toFixed(8)} | Side: ${this.side}`);
 
+    // MinBet Check
+    if (this.config.min_bet > 0 && currentBet < this.config.min_bet) {
+      this.logger(`[Pyramid] Bet ${currentBet.toFixed(8)} is below minimum ${this.config.min_bet}. Triggering final All-In.`);
+      return { stop: true, finalAllIn: true };
+    }
+
     await this.api.setBetAmount(currentBet);
     await this.api.setChance(this.chance); 
     await this.api.setSide(this.side);
@@ -200,6 +206,12 @@ class TimeAccumulatorStrategy {
       betAmount = Math.max(safetyFloor, 0.00000001);
     }
 
+    // MinBet Check
+    if (this.config.min_bet > 0 && betAmount < this.config.min_bet) {
+      this.logger(`[TimeAccumulator] Bet ${betAmount.toFixed(8)} is below minimum ${this.config.min_bet}. Triggering final All-In.`);
+      return { stop: true, finalAllIn: true };
+    }
+
     // Hard floor at 1 satoshi
     betAmount = Math.max(betAmount, 0.00000001);
     // Hard cap at current balance
@@ -260,6 +272,12 @@ class DiceMomentumStrategy {
     }
 
     this.logger(`[Momentum] Streak: ${this.winStreak} | Bet: ${betAmount.toFixed(8)} | Bal: ${currentBalance.toFixed(8)}`);
+
+    // MinBet Check
+    if (this.config.min_bet > 0 && betAmount < this.config.min_bet) {
+      this.logger(`[Momentum] Bet ${betAmount.toFixed(8)} is below minimum ${this.config.min_bet}. Triggering final All-In.`);
+      return { stop: true, finalAllIn: true };
+    }
 
     await this.api.setBetAmount(betAmount);
     await this.api.setChance(currentChance);
@@ -435,6 +453,13 @@ class CombinedHighRollerStrategy {
 
     this.last_bet = bet;
     this.log_state("next-bet");
+
+    // MinBet Check
+    if (this.config.min_bet > 0 && bet < this.config.min_bet) {
+      this.logger(`[HighRoller] Bet ${bet.toFixed(8)} is below minimum ${this.config.min_bet}. Triggering final All-In.`);
+      return { stop: true, finalAllIn: true, bet: this.current_bankroll };
+    }
+
     return bet;
   }
 
@@ -681,22 +706,40 @@ async function runDicebet() {
     return false;
   }
 
+  // Pre-betting Safety Check: If already over threshold, don't start
+  const currentBal = await api.getBalance();
+  if (currentBal != null && currentBal >= threshold) {
+    log(`[Dice] Balance ${currentBal.toFixed(8)} is already ABOVE threshold ${threshold}. Skipping betting phase.`);
+    return true; 
+  }
+
+  // Guard: If no balance, exit immediately
+  if (currentBal == null || currentBal <= 0) {
+    log("DiceBet: No balance found, skipping betting phase.");
+    return false;
+  }
+
   // Recovery Wrapper: Ensuring the bot NEVER stops due to errors
   while (true) {
     try {
-      const currentBal = await api.getBalance();
-      if (currentBal == null) {
+      const bal = await api.getBalance();
+      if (bal == null) {
         log(`[Dice] Waiting for balance to load...`);
         await sleep(5000);
         continue;
       }
-      if (currentBal >= threshold) return true;
+      
+      // Post-roll Check: Did we hit the goal?
+      if (bal >= threshold) return true;
 
-      // All-In Strategy
+      // Claim cycle check: Stop if claim is starting soon
+      if (isClaimDueSoon(config)) return false;
+
+      // All-In Strategy (Direct)
       if (config.strategy === DICE_STRATEGY_ALL_IN_001) {
         const allInCfg = config.allInConfig || {};
-        log(`[All-In] Balance: ${currentBal.toFixed(8)} | Threshold: ${threshold}`);
-        await api.setBetAmount(currentBal);
+        log(`[All-In] Balance: ${bal.toFixed(8)} | Threshold: ${threshold}`);
+        await api.setBetAmount(bal);
         await api.setChance(allInCfg.chance || 49.5);
         await api.setSide(allInCfg.side || "higher");
         await api.roll();
@@ -708,10 +751,20 @@ async function runDicebet() {
       if (config.strategy === DICE_STRATEGY_PYRAMID) {
         const pyramid = new WinStreakPyramid(config.pyramidConfig, api, log);
         while (true) {
+          if (isClaimDueSoon(config)) return false;
           const res = await pyramid.runRound();
+          
+          if (res?.finalAllIn) {
+            const finalBal = await api.getBalance();
+            await api.setBetAmount(finalBal);
+            await api.roll();
+            return false; 
+          }
+          if (res?.stop) break;
+
           await sleep(100); 
-          const bal = await api.getBalance();
-          if (bal >= threshold) return true;
+          const b = await api.getBalance();
+          if (b >= threshold) return true;
         }
       }
 
@@ -719,10 +772,20 @@ async function runDicebet() {
       if (config.strategy === DICE_STRATEGY_TIME_ACCUMULATOR) {
         const timeAcc = new TimeAccumulatorStrategy(config.strategyConfig, api, config.intervalMinutes, config.lastClaimedAt, log);
         while (true) {
-          await timeAcc.runRound();
+          if (isClaimDueSoon(config)) return false;
+          const res = await timeAcc.runRound();
+
+          if (res?.finalAllIn) {
+            const finalBal = await api.getBalance();
+            await api.setBetAmount(finalBal);
+            await api.roll();
+            return false;
+          }
+          if (res?.stop) break;
+
           await sleep(200); 
-          const bal = await api.getBalance();
-          if (bal >= threshold) return true;
+          const b = await api.getBalance();
+          if (b >= threshold) return true;
         }
       }
 
@@ -742,14 +805,27 @@ async function runDicebet() {
       // Default / Combined High Roller Strategy
       const hrCfg = config.strategyConfig || {};
       const strategy = new CombinedHighRollerStrategy(hrCfg, log);
-      strategy.initialize(currentBal);
+      strategy.initialize(bal);
       while (true) {
-        const bal = await api.getBalance();
-        if (bal >= threshold) return true;
+        if (isClaimDueSoon(config)) return false;
+        const b = await api.getBalance();
+        if (b >= threshold) return true;
         
-        strategy.current_bankroll = bal || 0;
-        const nextBet = strategy.get_next_bet();
+        strategy.current_bankroll = b || 0;
+        const res = strategy.get_next_bet();
         
+        // Handle stop/finalAllIn from HighRoller
+        if (res === 0 || (typeof res === "object" && res.stop)) {
+          if (res?.finalAllIn) {
+            await api.setBetAmount(res.bet || b);
+            await api.setChance(strategy.chance);
+            await api.setSide(strategy.side);
+            await api.roll();
+          }
+          return false;
+        }
+
+        const nextBet = res;
         await api.setBetAmount(nextBet);
         await api.setChance(strategy.chance);
         await api.setSide(strategy.side);
@@ -757,7 +833,7 @@ async function runDicebet() {
         
         await sleep(2000);
         const balAfter = await api.getBalance();
-        strategy.on_roll_result(balAfter > bal, balAfter);
+        strategy.on_roll_result(balAfter > b, balAfter);
       }
     } catch (err) {
       log(`[Dice] ENGINE CRASH DETECTED: ${err.message}. Rebooting in 5s...`);
@@ -797,4 +873,23 @@ async function dicebetDiagnosticScan() {
     console.error("Diagnostic failed:", err);
   }
   console.groupEnd();
+}
+
+/**
+ * Checks if a faucet claim is due within the safety buffer window.
+ * Returns true if we should stop betting to prepare for the claim.
+ */
+function isClaimDueSoon(config) {
+  if (!config.lastClaimedAt || !config.intervalMinutes) return false;
+  
+  const now = Date.now();
+  const nextClaim = config.lastClaimedAt + (config.intervalMinutes * 60 * 1000);
+  const msUntilClaim = nextClaim - now;
+  
+  // Return true if claim is starting within the safety buffer (default 2 mins)
+  const isDue = msUntilClaim <= DICE_CLAIM_BUFFER_MS;
+  if (isDue) {
+    log(`[Dice] ⚠️ Claim due in ${(msUntilClaim / 1000).toFixed(0)}s. Stopping betting to safeguard claim cycle.`);
+  }
+  return isDue;
 }

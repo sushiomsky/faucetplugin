@@ -594,6 +594,10 @@ function renderConfigForSite(index) {
             <span class="label" style="font-size:9px;">Flip on Loss</span>
             <input type="checkbox" id="pyrSwitch" ${f.dbPyramidConfig?.switch_on_loss !== false ? "checked" : ""}>
           </div>
+          <div class="field" style="margin-top:2px;">
+            <label class="label" style="font-size:9px; color:var(--accent)">Min Bet (Stop & All-in)</label>
+            <input type="number" id="pyrMinBet" value="${f.dbPyramidConfig?.min_bet || 0.00000001}" step="any">
+          </div>
         </div>
 
         <div id="highRollerConfig" style="display:${f.dbStrategy === DICE_STRATEGY_COMBINED_HIGH_ROLLER ? 'flex' : 'none'}; flex-direction:column; gap:8px; background:rgba(255,255,255,0.02); padding:10px; border-radius:12px; border:1px solid var(--glass-border);">
@@ -630,6 +634,10 @@ function renderConfigForSite(index) {
               <input type="number" id="hrHistory" value="${f.dbStrategyConfig?.history_window || 10}">
             </div>
           </div>
+          <div class="field" style="margin-top:2px;">
+            <label class="label" style="font-size:9px; color:var(--accent)">Min Bet (Stop & All-in)</label>
+            <input type="number" id="hrMinBet" value="${f.dbStrategyConfig?.min_bet || 0.00000001}" step="any">
+          </div>
         </div>
 
         <div id="timeAccumulatorConfig" style="display:${f.dbStrategy === DICE_STRATEGY_TIME_ACCUMULATOR ? 'flex' : 'none'}; flex-direction:column; gap:8px; background:rgba(255,255,255,0.02); padding:10px; border-radius:12px; border:1px solid var(--glass-border);">
@@ -656,9 +664,12 @@ function renderConfigForSite(index) {
               <input type="number" id="taMaxFrac" value="${f.dbTimeAccumulatorConfig?.max_bet_fraction || 0.90}" step="any">
             </div>
           </div>
-          <div class="field" style="margin-top:2px;">
             <label class="label" style="font-size:9px;">Seed Bet (if no profit) % of balance</label>
             <input type="number" id="taSeed" value="${f.dbTimeAccumulatorConfig?.safety_floor_pct || 0.05}" step="any">
+          </div>
+          <div class="field" style="margin-top:2px;">
+            <label class="label" style="font-size:9px; color:var(--accent)">Min Bet (Stop & All-in)</label>
+            <input type="number" id="taMinBet" value="${f.dbTimeAccumulatorConfig?.min_bet || 0.00000001}" step="any">
           </div>
         </div>
 
@@ -686,9 +697,12 @@ function renderConfigForSite(index) {
               <input type="number" id="momMult" value="${f.dbMomentumConfig?.multiplier || 1.25}" step="any">
             </div>
           </div>
-          <div class="field">
              <label class="label" style="font-size:9px;">Max Increases</label>
              <input type="number" id="momMaxInc" value="${f.dbMomentumConfig?.max_increases || 3}">
+          </div>
+          <div class="field" style="margin-top:2px;">
+            <label class="label" style="font-size:9px; color:var(--accent)">Min Bet (Stop & All-in)</label>
+            <input type="number" id="momMinBet" value="${f.dbMomentumConfig?.min_bet || 0.00000001}" step="any">
           </div>
           <div style="margin-top:5px; padding-top:5px; border-top:1px dashed rgba(255,255,255,0.1);">
             <div class="field" style="flex-direction:row; justify-content:space-between; align-items:center;">
@@ -837,6 +851,8 @@ function renderConfigForSite(index) {
       if (pyrDropEl) f.dbPyramidConfig.drop_levels = parseInt(pyrDropEl.value);
       const pyrSwitchEl = card.querySelector("#pyrSwitch");
       if (pyrSwitchEl) f.dbPyramidConfig.switch_on_loss = pyrSwitchEl.checked;
+      const pyrMinBetEl = card.querySelector("#pyrMinBet");
+      if (pyrMinBetEl) f.dbPyramidConfig.min_bet = parseFloat(pyrMinBetEl.value);
       
       // High Roller Mapping
       if (!f.dbStrategyConfig) f.dbStrategyConfig = {};
@@ -854,11 +870,16 @@ function renderConfigForSite(index) {
       
       const hrHistoryEl = card.querySelector("#hrHistory");
       if (hrHistoryEl) f.dbStrategyConfig.history_window = parseInt(hrHistoryEl.value);
+
+      const hrMinBetEl = card.querySelector("#hrMinBet");
+      if (hrMinBetEl) f.dbStrategyConfig.min_bet = parseFloat(hrMinBetEl.value);
       
       // Time-Accumulator Mapping
       if (!f.dbTimeAccumulatorConfig) f.dbTimeAccumulatorConfig = {};
       const taSideEl = card.querySelector("#taSide");
       if (taSideEl) f.dbTimeAccumulatorConfig.side = taSideEl.value;
+      const taMinBetEl = card.querySelector("#taMinBet");
+      if (taMinBetEl) f.dbTimeAccumulatorConfig.min_bet = parseFloat(taMinBetEl.value);
 
       // Momentum Mapping
       if (!f.dbMomentumConfig) f.dbMomentumConfig = {};
@@ -882,6 +903,9 @@ function renderConfigForSite(index) {
       if (momLotteryWinEl) f.dbMomentumConfig.lottery_win_chance = parseFloat(momLotteryWinEl.value);
       const momLotterySafeEl = card.querySelector("#momLotterySafe");
       if (momLotterySafeEl) f.dbMomentumConfig.lottery_safe_mode = momLotterySafeEl.checked;
+      const momMinBetEl = card.querySelector("#momMinBet");
+      if (momMinBetEl) f.dbMomentumConfig.min_bet = parseFloat(momMinBetEl.value);
+
       const taChanceEl = card.querySelector("#taChance");
       if (taChanceEl) f.dbTimeAccumulatorConfig.chance = parseFloat(taChanceEl.value);
       const taMinFracEl = card.querySelector("#taMinFrac");
