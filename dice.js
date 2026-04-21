@@ -1,3 +1,4 @@
+(function() {
 // ── dice.js ─────────────────────────────────────────────────────────────
 
 /**
@@ -679,7 +680,7 @@ async function waitForDicebetIdle(maxWaitMs = 5000) {
   return true; // Forced fallback
 }
 
-async function runDicebet() {
+async window.runDicebet = function runDicebet() {
   window.auto_betting_status = "starting"; // Immediate lock
   await sleep(1000); // 1s stability delay
   
@@ -848,26 +849,26 @@ async function dicebetDiagnosticScan() {
     const buttons = Array.from(document.querySelectorAll('button, input[type="button"], a[role="button"]'));
     const inputs = Array.from(document.querySelectorAll('input:not([type="hidden"])'));
     
-    console.console.log("[FaucetPlugin]", "Buttons found:", buttons.length);
+    console.log("[FaucetPlugin]", "Buttons found:", buttons.length);
     buttons.forEach(b => {
       const rect = b.getBoundingClientRect();
       const visible = rect.width > 0 && rect.height > 0 && window.getComputedStyle(b).display !== 'none';
-      console.console.log("[FaucetPlugin]", `- [${visible ? 'VISIBLE' : 'HIDDEN'}] Text: "${b.innerText?.trim() || b.value}" | ID: #${b.id} | Class: .${b.className.split(' ').join('.')}`);
+      console.log("[FaucetPlugin]", `- [${visible ? 'VISIBLE' : 'HIDDEN'}] Text: "${b.innerText?.trim() || b.value}" | ID: #${b.id} | Class: .${b.className.split(' ').join('.')}`);
     });
 
-    console.console.log("[FaucetPlugin]", "Inputs found:", inputs.length);
+    console.log("[FaucetPlugin]", "Inputs found:", inputs.length);
     inputs.forEach(i => {
-      console.console.log("[FaucetPlugin]", `- Name: "${i.name}" | ID: #${i.id} | Placeholder: "${i.placeholder}" | Value: "${i.value}"`);
+      console.log("[FaucetPlugin]", `- Name: "${i.name}" | ID: #${i.id} | Placeholder: "${i.placeholder}" | Value: "${i.value}"`);
     });
 
     const rollBtn = findDicebetBetButton();
     const amtInput = findDicebetAmountInput();
-    console.console.log("[FaucetPlugin]", "Target Roll Button:", rollBtn ? "FOUND ✅" : "NOT FOUND ❌");
-    console.console.log("[FaucetPlugin]", "Target Amount Input:", amtInput ? "FOUND ✅" : "NOT FOUND ❌");
+    console.log("[FaucetPlugin]", "Target Roll Button:", rollBtn ? "FOUND ✅" : "NOT FOUND ❌");
+    console.log("[FaucetPlugin]", "Target Amount Input:", amtInput ? "FOUND ✅" : "NOT FOUND ❌");
     
     if (rollBtn) {
       const style = window.getComputedStyle(rollBtn);
-      console.console.log("[FaucetPlugin]", "Roll Button Style:", { pointerEvents: style.pointerEvents, opacity: style.opacity, zIndex: style.zIndex });
+      console.log("[FaucetPlugin]", "Roll Button Style:", { pointerEvents: style.pointerEvents, opacity: style.opacity, zIndex: style.zIndex });
     }
   } catch (err) {
     console.error("Diagnostic failed:", err);
@@ -893,3 +894,4 @@ function isClaimDueSoon(config) {
   }
   return isDue;
 }
+})();

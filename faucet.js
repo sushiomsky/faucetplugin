@@ -1,3 +1,4 @@
+(function() {
 // ── faucet.js ─────────────────────────────────────────────────────────────
 
 function startDiceHangWatchdog(diceEnabled) {
@@ -265,7 +266,7 @@ async function tryClaimHourlyFaucet() {
   return false;
 }
 
-async function runFaucet() {
+async window.runFaucet = function runFaucet() {
   log("Faucet page:", location.href);
 
   const dbConfig = await getDicebetConfig();
@@ -361,3 +362,4 @@ async function runFaucet() {
     stopDiceHangWatchdog();
   }
 }
+})();

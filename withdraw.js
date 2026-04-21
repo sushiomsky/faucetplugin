@@ -1,3 +1,4 @@
+(function() {
 // ── withdraw.js ─────────────────────────────────────────────────────────────
 
 function scrapeMinimumWithdrawal() {
@@ -44,7 +45,7 @@ async function waitForRocketLoaderHandlers() {
   });
 }
 
-async function runWithdraw(address) {
+async window.runWithdraw = function runWithdraw(address) {
   console.log("[FaucetPlugin] 🚀 Withdrawal sequence started for:", location.href, "address:", address);
 
   if (!address) { sendWdError("no-address-configured"); return; }
@@ -170,3 +171,4 @@ async function runWithdraw(address) {
   
   sendWdDone();
 }
+})();

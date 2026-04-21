@@ -1,3 +1,4 @@
+(function() {
 // ── captcha.js ────────────────────────────────────────────────────────────
 
 function getCaptchaToken() {
@@ -39,9 +40,9 @@ function requestNativeClick(x, y, label) {
   chrome.runtime.sendMessage(
     { type: "native-click", x: Math.round(x), y: Math.round(y), label },
     (resp) => {
-      if (chrome.runtime.lastError) log(`Native click failed: ${chrome.runtime.lastError.message}`);
-      else if (resp?.ok) log(`Native click dispatched for ${label}`);
-      else if (resp?.error) log(`Native click error: ${resp.error}`);
+      if (chrome.runtime.lastError) console.log("[FaucetPlugin]", `Native click failed: ${chrome.runtime.lastError.message}`);
+      else if (resp?.ok) console.log("[FaucetPlugin]", `Native click dispatched for ${label}`);
+      else if (resp?.error) console.log("[FaucetPlugin]", `Native click error: ${resp.error}`);
     }
   );
 }
@@ -69,7 +70,7 @@ function clickElementRobust(el, label) {
   }
 
   requestNativeClick(x, y, label);
-  log(`Clicked ${label}`);
+  console.log("[FaucetPlugin]", `Clicked ${label}`);
   return true;
 }
 
@@ -104,20 +105,20 @@ function tryClickCaptchaWidget() {
   widget = __FP_Selectors.getFirstValid("captchaPCaptchaWidget");
   if (widget && isVisibleForClick(widget) && clickElementRobust(widget, "pCaptcha widget")) return true;
 
-  log("No valid captcha widget found to click (avoiding container-level clicks)");
+  console.log("[FaucetPlugin]", "No valid captcha widget found to click (avoiding container-level clicks)");
   return false;
 }
 
 async function rotateCaptchaType() {
   const select = __FP_Selectors.getFirstValid("captchaSelect");
   if (!select) {
-    log("Captcha rotation: No selection dropdown found");
+    console.log("[FaucetPlugin]", "Captcha rotation: No selection dropdown found");
     return false;
   }
 
   const options = Array.from(select.options).filter(o => !o.disabled && o.value);
   if (options.length <= 1) {
-    log("Captcha rotation: Only one method available, cannot rotate");
+    console.log("[FaucetPlugin]", "Captcha rotation: Only one method available, cannot rotate");
     return false;
   }
 
@@ -138,7 +139,7 @@ async function rotateCaptchaType() {
   }
 
   const newLabel = select.options[select.selectedIndex].text;
-  log(`Captcha rotation: Switched to ${newLabel} (value: ${select.value})`);
+  console.log("[FaucetPlugin]", `Captcha rotation: Switched to ${newLabel} (value: ${select.value})`);
   
   // Trigger change event
   select.dispatchEvent(new Event('change', { bubbles: true }));
@@ -160,7 +161,7 @@ function hasCaptchaWidget() {
   );
 }
 
-function waitForCaptchaToken(timeoutMs = window.__FP_MAX_WAIT_MS) {
+window.waitForCaptchaToken = function waitForCaptchaToken(timeoutMs = window.__FP_MAX_WAIT_MS) {
   return new Promise((resolve) => {
     const start = Date.now();
     let clickAttempts = 0;
@@ -169,7 +170,7 @@ function waitForCaptchaToken(timeoutMs = window.__FP_MAX_WAIT_MS) {
     const maxClickAttempts = Math.max(window.MAX_CAPTCHA_RETRIES, Math.ceil(timeoutMs / window.__FP_RETRY_MS));
     let timer = null;
 
-    log(`Waiting for captcha token (timeout: ${timeoutMs}ms)...`);
+    console.log("[FaucetPlugin]", `Waiting for captcha token (timeout: ${timeoutMs}ms)...`);
 
     // Use a MutationObserver to instantly resolve if token is written, falling back to gentle polling
     const targetNode = document.body;
@@ -185,8 +186,8 @@ function waitForCaptchaToken(timeoutMs = window.__FP_MAX_WAIT_MS) {
     function finish(token) {
       if (timer) clearInterval(timer);
       observer.disconnect();
-      if (token) log(`✓ Captcha resolved after ${Date.now() - start}ms`);
-      else log(`✗ Captcha timeout after ${Date.now() - start}ms`);
+      if (token) console.log("[FaucetPlugin]", `✓ Captcha resolved after ${Date.now() - start}ms`);
+      else console.log("[FaucetPlugin]", `✗ Captcha timeout after ${Date.now() - start}ms`);
       resolve(token);
     }
 
@@ -208,7 +209,7 @@ function waitForCaptchaToken(timeoutMs = window.__FP_MAX_WAIT_MS) {
       const readyToClick = (elapsed >= 1000);
 
       if (readyToClick && (now - lastClickTime >= window.__FP_RETRY_MS) && clickAttempts < maxClickAttempts) {
-        console.log(`[FaucetPlugin] Triggering captcha interaction attempt ${clickAttempts + 1}...`);
+        console.log("[FaucetPlugin]", `[FaucetPlugin] Triggering captcha interaction attempt ${clickAttempts + 1}...`);
         const clicked = tryClickCaptchaWidget();
         if (clicked) {
           lastClickTime = now;
@@ -225,3 +226,4 @@ function waitForCaptchaToken(timeoutMs = window.__FP_MAX_WAIT_MS) {
     timer = setInterval(pollCaptchaToken, window.__FP_POLL_MS);
   });
 }
+})();

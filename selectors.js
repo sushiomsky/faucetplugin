@@ -1,6 +1,7 @@
+(function() {
 // ── selectors.js ─────────────────────────────────────────────────────────────
 
-const __FP_Selectors = {
+window.__FP_Selectors = {
   get(key) {
     if (!key) return [];
     const host = window.location.hostname.replace('www.', '');
@@ -193,3 +194,4 @@ const __FP_Selectors = {
     ]
   }
 };
+})();

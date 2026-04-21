@@ -1,3 +1,4 @@
+(function() {
 // ── content.js (Main Orchestrator) ──────────────────────────────────────────
 
 async function main() {
@@ -109,3 +110,4 @@ function handleMainError(err) {
 }
 
 main().catch(handleMainError);
+})();

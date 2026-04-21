@@ -1,6 +1,6 @@
 // A simple AES-GCM encryption utility for browser extensions
 // Secures plaintext passwords in chrome.storage.local
-const __FP_Crypto = {
+window.__FP_Crypto = {
   async getKey() {
     return new Promise((resolve) => {
       chrome.storage.local.get(['_extension_key'], async (result) => {

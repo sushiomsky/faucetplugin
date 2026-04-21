@@ -1,3 +1,4 @@
+(function() {
 // ── utils.js ──────────────────────────────────────────────────────────────
 window.__FP_POLL_MS            = 500;
 window.__FP_MAX_WAIT_MS        = 90000;
@@ -26,18 +27,18 @@ window.lastNativeClickAt = 0;
 window.lastPhaseHeartbeatAt = 0;
 
 window.DEBUG = false; 
-function log(...a) {
+window.log = function log(...a) {
   if (window.DEBUG) {
     console.log("[FaucetPick]", ...a);
   }
 }
-function sleep(ms) {
+window.sleep = function sleep(ms) {
   return new Promise(function resolveSleep(resolveSleepPromise) {
     setTimeout(resolveSleepPromise, ms);
   });
 }
 
-function sameHost(url1, url2) {
+window.sameHost = function sameHost(url1, url2) {
   try {
     return new URL(url1).hostname === new URL(url2).hostname;
   } catch {
@@ -76,25 +77,25 @@ function getDicePageUrl() {
   }
 }
 
-function scrollToBottom() {
+window.scrollToBottom = function scrollToBottom() {
   window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
   const main = document.querySelector("main, .container, #content, #wrap");
   if (main) main.scrollTo({ top: main.scrollHeight, behavior: "smooth" });
 }
 
-function sendDone(balance)   { chrome.runtime.sendMessage({ type: "faucet-done",   balance }); }
-function sendError(reason)   { chrome.runtime.sendMessage({ type: "faucet-error",  reason }); }
-function sendWdDone()        { chrome.runtime.sendMessage({ type: "withdraw-done" }); }
-function sendWdError(reason) { chrome.runtime.sendMessage({ type: "withdraw-error", reason }); }
+window.sendDone = function sendDone(balance)   { chrome.runtime.sendMessage({ type: "faucet-done",   balance }); }
+window.sendError = function sendError(reason)   { chrome.runtime.sendMessage({ type: "faucet-error",  reason }); }
+window.sendWdDone = function sendWdDone()        { chrome.runtime.sendMessage({ type: "withdraw-done" }); }
+window.sendWdError = function sendWdError(reason) { chrome.runtime.sendMessage({ type: "withdraw-error", reason }); }
 
-function sendPhaseHeartbeat(detail = "") {
+window.sendPhaseHeartbeat = function sendPhaseHeartbeat(detail = "") {
   const now = Date.now();
   if (now - window.lastPhaseHeartbeatAt < window.PHASE_HEARTBEAT_INTERVAL_MS) return;
   window.lastPhaseHeartbeatAt = now;
   chrome.runtime.sendMessage({ type: "phase-heartbeat", phase: "faucet", detail, ts: now });
 }
 
-async function isPluginTab() {
+async window.isPluginTab = function isPluginTab() {
   if (location.hash === "#manual") return true;
   
   // Retry 5 times with 500ms intervals (2.5s total) to allow background/storage sync
@@ -120,7 +121,7 @@ async function isPluginTab() {
   return false;
 }
 
-function getWithdrawInfo() {
+window.getWithdrawInfo = function getWithdrawInfo() {
   return new Promise(resolve => {
     chrome.runtime.sendMessage({ type: "get-withdraw-info" }, (resp) => {
       if (chrome.runtime.lastError) { resolve({ isWithdrawTab: false, address: "" }); return; }
@@ -129,7 +130,7 @@ function getWithdrawInfo() {
   });
 }
 
-function getCurrentTabState() {
+window.getCurrentTabState = function getCurrentTabState() {
   return new Promise(resolve => {
     chrome.runtime.sendMessage({ type: "get-tab-state" }, (resp) => {
       if (chrome.runtime.lastError) { resolve(null); return; }
@@ -138,16 +139,16 @@ function getCurrentTabState() {
   });
 }
 
-function isFaucetPage()   { return location.pathname.includes("faucet.php"); }
-function isWithdrawPage() { return /withdraw/i.test(location.pathname); }
-function isDicebetPage()  { return location.pathname.includes("dice.php") || /dice|dicebet/i.test(location.pathname); }
-function hasLoginForm()   { 
+window.isFaucetPage = window.isFaucetPage = function isFaucetPage()   { return location.pathname.includes("faucet.php"); }
+window.isWithdrawPage = function isWithdrawPage() { return /withdraw/i.test(location.pathname); }
+window.isDicebetPage = window.isDicebetPage = function isDicebetPage()  { return location.pathname.includes("dice.php") || /dice|dicebet/i.test(location.pathname); }
+window.hasLoginForm = function hasLoginForm()   { 
   try {
     return !!document.querySelector('input[type="password"]'); 
   } catch (_) { return false; }
 }
 
-function parseNumericValue(rawText) {
+window.parseNumericValue = function parseNumericValue(rawText) {
   if (typeof rawText !== "string") return null;
   const cleaned = rawText.replace(/,/g, "");
   const match = cleaned.match(/-?\d+(?:\.\d+)?/);
@@ -156,11 +157,11 @@ function parseNumericValue(rawText) {
   return Number.isFinite(value) ? value : null;
 }
 
-function readBalance() {
+window.readBalance = function readBalance() {
   const els = [
-    ...SiteSelectors.getAllValid("balance"),
-    ...SiteSelectors.getAllValid("balancePrimary"),
-    ...SiteSelectors.getAllValid("balanceFallback")
+    ...__FP_Selectors.getAllValid("balance"),
+    ...__FP_Selectors.getAllValid("balancePrimary"),
+    ...__FP_Selectors.getAllValid("balanceFallback")
   ];
   
   for (const el of els) {
@@ -170,8 +171,9 @@ function readBalance() {
   return null;
 }
 
-async function getFaucetUrl() {
+async window.getFaucetUrl = function getFaucetUrl() {
   const tabState = await getCurrentTabState();
   if (tabState?.faucetUrl) return tabState.faucetUrl;
   return location.origin + '/faucet.php';
 }
+})();

@@ -1,3 +1,4 @@
+(function() {
 // ── auth.js ─────────────────────────────────────────────────────────────
 
 async function getCredentials() {
@@ -98,7 +99,7 @@ function setupManualLoginCapture() {
   }
 }
 
-async function runLogin() {
+async window.runLogin = function runLogin() {
   log("Login page:", location.href);
 
   await sleep(1500);
@@ -209,3 +210,4 @@ async function runLogin() {
   const delay = randomDelay();
   await sleep(delay);
 }
+})();
