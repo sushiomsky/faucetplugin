@@ -6,7 +6,7 @@
  */
 class DiceAPI {
   constructor(logger = log) {
-    this.logger = logger;
+    this.logger = console.log.bind(console, "[FaucetPlugin]");
   }
 
   async getBalance(retries = 3) {
@@ -38,7 +38,7 @@ class DiceAPI {
   async roll() {
     const ready = await waitForDicebetIdle(10000);
     if (!ready) {
-      log("[Dice] Engine stuck — initiating Focus Reset");
+      console.log("[FaucetPlugin]", "[Dice] Engine stuck — initiating Focus Reset");
       document.body.click(); // Click background to reset site focus
       await sleep(500);
     }
@@ -49,7 +49,7 @@ class DiceAPI {
     const started = placeDicebetRound();
     if (!started) throw new Error("roll-failed-to-start");
     
-    this.logger("[Turbo] Bet placed. Waiting for result...");
+    console.log("[FaucetPlugin]", "[Turbo] Bet placed. Waiting for result...");
 
     const finished = await waitForDicebetIdle(120000);
     if (!finished) throw new Error("roll-timeout");
@@ -66,7 +66,7 @@ class WinStreakPyramid {
   constructor(config, api, logger = log) {
     this.config = typeof normalizePyramidConfig === "function" ? normalizePyramidConfig(config) : config;
     this.api = api;
-    this.logger = logger;
+    this.logger = console.log.bind(console, "[FaucetPlugin]");
     this.level = 0;
     this.startBalance = 0;
     this.sessionProfit = 0;
@@ -83,7 +83,7 @@ class WinStreakPyramid {
     }
     this.isInitialized = true;
     const initialBaseBet = this.calculateBaseBet(this.startBalance);
-    this.logger(`[Pyramid] Initialized. Start Balance: ${this.startBalance.toFixed(8)} | Session Base Bet: ${initialBaseBet.toFixed(8)} (${this.config.base_bet_pct}%)`);
+    console.log("[FaucetPlugin]", `[Pyramid] Initialized. Start Balance: ${this.startBalance.toFixed(8)} | Session Base Bet: ${initialBaseBet.toFixed(8)} (${this.config.base_bet_pct}%)`);
   }
 
   calculateBaseBet(currentBalance) {
@@ -98,17 +98,17 @@ class WinStreakPyramid {
     const profit = currentBalance - this.startBalance;
     const profitPct = (profit / this.startBalance) * 100;
 
-    this.logger(`[Pyramid] Current Balance: ${currentBalance.toFixed(8)} | Profit: ${profit.toFixed(8)} (${profitPct.toFixed(2)}%)`);
+    console.log("[FaucetPlugin]", `[Pyramid] Current Balance: ${currentBalance.toFixed(8)} | Profit: ${profit.toFixed(8)} (${profitPct.toFixed(2)}%)`);
 
     // Pyramid Logic
     const baseBet = this.calculateBaseBet(currentBalance);
     const currentBet = baseBet * Math.pow(this.config.multiplier, this.level);
     
-    this.logger(`[Pyramid] Level: ${this.level} | Bet: ${currentBet.toFixed(8)} | Side: ${this.side}`);
+    console.log("[FaucetPlugin]", `[Pyramid] Level: ${this.level} | Bet: ${currentBet.toFixed(8)} | Side: ${this.side}`);
 
     // MinBet Check
     if (this.config.min_bet > 0 && currentBet < this.config.min_bet) {
-      this.logger(`[Pyramid] Bet ${currentBet.toFixed(8)} is below minimum ${this.config.min_bet}. Triggering final All-In.`);
+      console.log("[FaucetPlugin]", `[Pyramid] Bet ${currentBet.toFixed(8)} is below minimum ${this.config.min_bet}. Triggering final All-In.`);
       return { stop: true, finalAllIn: true };
     }
 
@@ -131,17 +131,17 @@ class WinStreakPyramid {
     if (win) {
       this.lossStreak = 0;
       if (this.level >= this.config.max_level) {
-          this.logger(`[Pyramid] Max Level reached & won. Locking in profit and resetting.`);
+          console.log("[FaucetPlugin]", `[Pyramid] Max Level reached & won. Locking in profit and resetting.`);
           this.level = 0;
       } else {
           this.level++;
-          this.logger(`[Pyramid] WIN! Moving to Level ${this.level}`);
+          console.log("[FaucetPlugin]", `[Pyramid] WIN! Moving to Level ${this.level}`);
       }
     } else {
       this.lossStreak = (this.lossStreak || 0) + 1;
       // Partial Reset
       this.level = Math.max(0, this.level - this.config.drop_levels);
-      this.logger(`[Pyramid] LOSS (Streak: ${this.lossStreak}). Dropping to Level ${this.level}`);
+      console.log("[FaucetPlugin]", `[Pyramid] LOSS (Streak: ${this.lossStreak}). Dropping to Level ${this.level}`);
       
       if (this.config.switch_on_loss) {
         this.side = this.side === "higher" ? "lower" : "higher";
@@ -149,7 +149,7 @@ class WinStreakPyramid {
 
       // Optional: Pause after 5 consecutive losses
       if (this.lossStreak >= 5) {
-          this.logger(`[Pyramid] High loss streak detected. Pausing for 30s...`);
+          console.log("[FaucetPlugin]", `[Pyramid] High loss streak detected. Pausing for 30s...`);
           await sleep(30000);
           this.lossStreak = 0;
       }
@@ -167,7 +167,7 @@ class TimeAccumulatorStrategy {
   constructor(config = {}, api, intervalMinutes = 61, lastClaimedAt = 0, logger = log) {
     this.config = config || { ...DEFAULT_TIME_ACCUMULATOR_CONFIG };
     this.api = api;
-    this.logger = logger;
+    this.logger = console.log.bind(console, "[FaucetPlugin]");
     this.intervalMs = intervalMinutes * 60 * 1000;
     this.lastClaimedAt = lastClaimedAt;
     this.startBalance = 0;
@@ -180,7 +180,7 @@ class TimeAccumulatorStrategy {
       throw new Error("empty-balance-stopping");
     }
     this.isInitialized = true;
-    this.logger(`[TimeAccumulator] Initialized. Start Balance: ${this.startBalance.toFixed(8)}`);
+    console.log("[FaucetPlugin]", `[TimeAccumulator] Initialized. Start Balance: ${this.startBalance.toFixed(8)}`);
   }
 
   async runRound() {
@@ -208,7 +208,7 @@ class TimeAccumulatorStrategy {
 
     // MinBet Check
     if (this.config.min_bet > 0 && betAmount < this.config.min_bet) {
-      this.logger(`[TimeAccumulator] Bet ${betAmount.toFixed(8)} is below minimum ${this.config.min_bet}. Triggering final All-In.`);
+      console.log("[FaucetPlugin]", `[TimeAccumulator] Bet ${betAmount.toFixed(8)} is below minimum ${this.config.min_bet}. Triggering final All-In.`);
       return { stop: true, finalAllIn: true };
     }
 
@@ -217,7 +217,7 @@ class TimeAccumulatorStrategy {
     // Hard cap at current balance
     betAmount = Math.min(betAmount, currentBalance);
 
-    this.logger(`[TimeAccumulator] Progress: ${(progress * 100).toFixed(1)}% | Risk: ${(riskFactor * 100).toFixed(1)}% | Accumulated: ${accumulated.toFixed(8)} | Bet: ${betAmount.toFixed(8)}`);
+    console.log("[FaucetPlugin]", `[TimeAccumulator] Progress: ${(progress * 100).toFixed(1)}% | Risk: ${(riskFactor * 100).toFixed(1)}% | Accumulated: ${accumulated.toFixed(8)} | Bet: ${betAmount.toFixed(8)}`);
 
     await this.api.setBetAmount(betAmount);
     await this.api.setChance(this.config.chance || 50);
@@ -236,7 +236,7 @@ class DiceMomentumStrategy {
   constructor(config, api, logger = log) {
     this.config = config || { ...DEFAULT_MOMENTUM_40_CONFIG };
     this.api = api;
-    this.logger = logger;
+    this.logger = console.log.bind(console, "[FaucetPlugin]");
     this.winStreak = 0;
     this.roundCount = 0;
     this.isInitialized = false;
@@ -244,7 +244,7 @@ class DiceMomentumStrategy {
 
   async init() {
     this.isInitialized = true;
-    this.logger(`[Momentum] Initialized. Win Chance: ${this.config.chance}% | Base Bet: ${this.config.base_bet_pct}%`);
+    console.log("[FaucetPlugin]", `[Momentum] Initialized. Win Chance: ${this.config.chance}% | Base Bet: ${this.config.base_bet_pct}%`);
   }
 
   calculateBet(currentBalance) {
@@ -268,14 +268,14 @@ class DiceMomentumStrategy {
     
     if (isLotteryRound) {
       currentChance = this.config.lottery_win_chance;
-      this.logger(`[Momentum] 🎰 LOTTERY ROUND TRIGGERED! Round: ${this.roundCount} | Chance: ${currentChance}%`);
+      console.log("[FaucetPlugin]", `[Momentum] 🎰 LOTTERY ROUND TRIGGERED! Round: ${this.roundCount} | Chance: ${currentChance}%`);
     }
 
-    this.logger(`[Momentum] Streak: ${this.winStreak} | Bet: ${betAmount.toFixed(8)} | Bal: ${currentBalance.toFixed(8)}`);
+    console.log("[FaucetPlugin]", `[Momentum] Streak: ${this.winStreak} | Bet: ${betAmount.toFixed(8)} | Bal: ${currentBalance.toFixed(8)}`);
 
     // MinBet Check
     if (this.config.min_bet > 0 && betAmount < this.config.min_bet) {
-      this.logger(`[Momentum] Bet ${betAmount.toFixed(8)} is below minimum ${this.config.min_bet}. Triggering final All-In.`);
+      console.log("[FaucetPlugin]", `[Momentum] Bet ${betAmount.toFixed(8)} is below minimum ${this.config.min_bet}. Triggering final All-In.`);
       return { stop: true, finalAllIn: true };
     }
 
@@ -297,14 +297,14 @@ class DiceMomentumStrategy {
 
     if (win) {
       this.winStreak++;
-      this.logger(`[Momentum] WIN! Streak is now ${this.winStreak}`);
+      console.log("[FaucetPlugin]", `[Momentum] WIN! Streak is now ${this.winStreak}`);
     } else {
       // Safe Mode: Lottery losses don't reset the momentum streak
       if (isLotteryRound && this.config.lottery_safe_mode) {
-        this.logger(`[Momentum] Lottery loss ignored (Safe Mode). Streak preserved at ${this.winStreak}`);
+        console.log("[FaucetPlugin]", `[Momentum] Lottery loss ignored (Safe Mode). Streak preserved at ${this.winStreak}`);
       } else {
         this.winStreak = 0;
-        this.logger(`[Momentum] LOSS. Resetting streak.`);
+        console.log("[FaucetPlugin]", `[Momentum] LOSS. Resetting streak.`);
       }
     }
 
@@ -395,7 +395,7 @@ class CombinedHighRollerStrategy {
 
   apply_bankroll_protection() {
     if (this.current_bankroll <= 0) {
-      this.logger("[Dice] Bankroll reached zero. Waiting for next claim...");
+      console.log("[FaucetPlugin]", "[Dice] Bankroll reached zero. Waiting for next claim...");
       return { stop: false, reason: "bankroll-zero" };
     }
     return { stop: false, reason: null };
@@ -456,7 +456,7 @@ class CombinedHighRollerStrategy {
 
     // MinBet Check
     if (this.config.min_bet > 0 && bet < this.config.min_bet) {
-      this.logger(`[HighRoller] Bet ${bet.toFixed(8)} is below minimum ${this.config.min_bet}. Triggering final All-In.`);
+      console.log("[FaucetPlugin]", `[HighRoller] Bet ${bet.toFixed(8)} is below minimum ${this.config.min_bet}. Triggering final All-In.`);
       return { stop: true, finalAllIn: true, bet: this.current_bankroll };
     }
 
@@ -533,7 +533,7 @@ class CombinedHighRollerStrategy {
     for (const [key, value] of Object.entries(extra)) {
       parts.push(`${key}=${value}`);
     }
-    this.logger(parts.join(" | "));
+    console.log("[FaucetPlugin]", parts.join(" | "));
   }
 }
 
@@ -553,7 +553,7 @@ async function getDicebetConfig() {
   const diceEnabled = isManual || (faucet?.dbEnabled === true);
   const strategy = normalizeDbStrategy(faucet?.dbStrategy || "pyramid", diceEnabled);
   
-  if (isManual) log("[Dice] Manual Override Active (#manual): Engine forced to ENABLED.");
+  if (isManual) console.log("[FaucetPlugin]", "[Dice] Manual Override Active (#manual): Engine forced to ENABLED.");
   
   let strategyConfig = {};
   if (strategy === DICE_STRATEGY_PYRAMID) {
@@ -602,9 +602,9 @@ async function setDicebetInputValue(input, value) {
   input.blur(); 
 }
 
-function findDicebetChanceInput() { return SiteSelectors.getFirstValid("diceChanceInput"); }
-function findDicebetAmountInput() { return SiteSelectors.getFirstValid("diceAmountInput"); }
-function findDicebetBetButton() { return SiteSelectors.getFirstValid("diceBetButton"); }
+function findDicebetChanceInput() { return __FP_Selectors.getFirstValid("diceChanceInput"); }
+function findDicebetAmountInput() { return __FP_Selectors.getFirstValid("diceAmountInput"); }
+function findDicebetBetButton() { return __FP_Selectors.getFirstValid("diceBetButton"); }
 
 function applyDicebetSide(side) {
   if (typeof window.bet_on === "string") window.bet_on = side;
@@ -619,13 +619,13 @@ function placeDicebetRound() {
       window.process_bet_game_dice();
       return true;
     } catch (err) {
-      log(`[Dice] Internal function failed: ${err.message}. Falling back to click.`);
+      console.log("[FaucetPlugin]", `[Dice] Internal function failed: ${err.message}. Falling back to click.`);
     }
   }
   const btn = findDicebetBetButton();
   if (btn) {
     if (btn.disabled) {
-      log("[Dice] Button is disabled — forcing enable");
+      console.log("[FaucetPlugin]", "[Dice] Button is disabled — forcing enable");
       btn.disabled = false;
     }
     
@@ -675,7 +675,7 @@ async function waitForDicebetIdle(maxWaitMs = 5000) {
     if (isDicebetIdle()) return true;
     await sleep(20);
   }
-  log("[Dice] Idle wait timeout — proceeding anyway (Forced Mode)");
+  console.log("[FaucetPlugin]", "[Dice] Idle wait timeout — proceeding anyway (Forced Mode)");
   return true; // Forced fallback
 }
 
@@ -683,7 +683,7 @@ async function runDicebet() {
   window.auto_betting_status = "starting"; // Immediate lock
   await sleep(1000); // 1s stability delay
   
-  log("[Turbo] MANUAL BOOTSTRAP INITIATED");
+  console.log("[FaucetPlugin]", "[Turbo] MANUAL BOOTSTRAP INITIATED");
   await dicebetDiagnosticScan(); // Performance & Visibility Audit
   
   sendPhaseHeartbeat("dice-start");
@@ -694,7 +694,7 @@ async function runDicebet() {
 
   // Guard: If not enabled, just check if we need to withdraw and exit
   if (!config.enabled) {
-    log("DiceBet disabled, performing threshold check only.");
+    console.log("[FaucetPlugin]", "DiceBet disabled, performing threshold check only.");
     const bal = await api.getBalance();
     return bal != null && bal >= threshold;
   }
@@ -702,20 +702,20 @@ async function runDicebet() {
   // Guard: If no balance, exit immediately
   const startBal = await api.getBalance();
   if (startBal == null || startBal <= 0) {
-    log("DiceBet: No balance found, skipping betting phase.");
+    console.log("[FaucetPlugin]", "DiceBet: No balance found, skipping betting phase.");
     return false;
   }
 
   // Pre-betting Safety Check: If already over threshold, don't start
   const currentBal = await api.getBalance();
   if (currentBal != null && currentBal >= threshold) {
-    log(`[Dice] Balance ${currentBal.toFixed(8)} is already ABOVE threshold ${threshold}. Skipping betting phase.`);
+    console.log("[FaucetPlugin]", `[Dice] Balance ${currentBal.toFixed(8)} is already ABOVE threshold ${threshold}. Skipping betting phase.`);
     return true; 
   }
 
   // Guard: If no balance, exit immediately
   if (currentBal == null || currentBal <= 0) {
-    log("DiceBet: No balance found, skipping betting phase.");
+    console.log("[FaucetPlugin]", "DiceBet: No balance found, skipping betting phase.");
     return false;
   }
 
@@ -724,7 +724,7 @@ async function runDicebet() {
     try {
       const bal = await api.getBalance();
       if (bal == null) {
-        log(`[Dice] Waiting for balance to load...`);
+        console.log("[FaucetPlugin]", `[Dice] Waiting for balance to load...`);
         await sleep(5000);
         continue;
       }
@@ -738,7 +738,7 @@ async function runDicebet() {
       // All-In Strategy (Direct)
       if (config.strategy === DICE_STRATEGY_ALL_IN_001) {
         const allInCfg = config.allInConfig || {};
-        log(`[All-In] Balance: ${bal.toFixed(8)} | Threshold: ${threshold}`);
+        console.log("[FaucetPlugin]", `[All-In] Balance: ${bal.toFixed(8)} | Threshold: ${threshold}`);
         await api.setBetAmount(bal);
         await api.setChance(allInCfg.chance || 49.5);
         await api.setSide(allInCfg.side || "higher");
@@ -836,7 +836,7 @@ async function runDicebet() {
         strategy.on_roll_result(balAfter > b, balAfter);
       }
     } catch (err) {
-      log(`[Dice] ENGINE CRASH DETECTED: ${err.message}. Rebooting in 5s...`);
+      console.log("[FaucetPlugin]", `[Dice] ENGINE CRASH DETECTED: ${err.message}. Rebooting in 5s...`);
       await sleep(5000);
     }
   }
@@ -848,26 +848,26 @@ async function dicebetDiagnosticScan() {
     const buttons = Array.from(document.querySelectorAll('button, input[type="button"], a[role="button"]'));
     const inputs = Array.from(document.querySelectorAll('input:not([type="hidden"])'));
     
-    console.log("Buttons found:", buttons.length);
+    console.console.log("[FaucetPlugin]", "Buttons found:", buttons.length);
     buttons.forEach(b => {
       const rect = b.getBoundingClientRect();
       const visible = rect.width > 0 && rect.height > 0 && window.getComputedStyle(b).display !== 'none';
-      console.log(`- [${visible ? 'VISIBLE' : 'HIDDEN'}] Text: "${b.innerText?.trim() || b.value}" | ID: #${b.id} | Class: .${b.className.split(' ').join('.')}`);
+      console.console.log("[FaucetPlugin]", `- [${visible ? 'VISIBLE' : 'HIDDEN'}] Text: "${b.innerText?.trim() || b.value}" | ID: #${b.id} | Class: .${b.className.split(' ').join('.')}`);
     });
 
-    console.log("Inputs found:", inputs.length);
+    console.console.log("[FaucetPlugin]", "Inputs found:", inputs.length);
     inputs.forEach(i => {
-      console.log(`- Name: "${i.name}" | ID: #${i.id} | Placeholder: "${i.placeholder}" | Value: "${i.value}"`);
+      console.console.log("[FaucetPlugin]", `- Name: "${i.name}" | ID: #${i.id} | Placeholder: "${i.placeholder}" | Value: "${i.value}"`);
     });
 
     const rollBtn = findDicebetBetButton();
     const amtInput = findDicebetAmountInput();
-    console.log("Target Roll Button:", rollBtn ? "FOUND ✅" : "NOT FOUND ❌");
-    console.log("Target Amount Input:", amtInput ? "FOUND ✅" : "NOT FOUND ❌");
+    console.console.log("[FaucetPlugin]", "Target Roll Button:", rollBtn ? "FOUND ✅" : "NOT FOUND ❌");
+    console.console.log("[FaucetPlugin]", "Target Amount Input:", amtInput ? "FOUND ✅" : "NOT FOUND ❌");
     
     if (rollBtn) {
       const style = window.getComputedStyle(rollBtn);
-      console.log("Roll Button Style:", { pointerEvents: style.pointerEvents, opacity: style.opacity, zIndex: style.zIndex });
+      console.console.log("[FaucetPlugin]", "Roll Button Style:", { pointerEvents: style.pointerEvents, opacity: style.opacity, zIndex: style.zIndex });
     }
   } catch (err) {
     console.error("Diagnostic failed:", err);
@@ -889,7 +889,7 @@ function isClaimDueSoon(config) {
   // Return true if claim is starting within the safety buffer (default 2 mins)
   const isDue = msUntilClaim <= DICE_CLAIM_BUFFER_MS;
   if (isDue) {
-    log(`[Dice] ⚠️ Claim due in ${(msUntilClaim / 1000).toFixed(0)}s. Stopping betting to safeguard claim cycle.`);
+    console.log("[FaucetPlugin]", `[Dice] ⚠️ Claim due in ${(msUntilClaim / 1000).toFixed(0)}s. Stopping betting to safeguard claim cycle.`);
   }
   return isDue;
 }
