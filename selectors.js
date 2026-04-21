@@ -1,6 +1,6 @@
 // ── selectors.js ─────────────────────────────────────────────────────────────
 
-const SiteSelectors = {
+const __FP_Selectors = {
   get(key) {
     if (!key) return [];
     const host = window.location.hostname.replace('www.', '');

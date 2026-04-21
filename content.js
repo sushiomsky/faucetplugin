@@ -15,8 +15,8 @@ async function main() {
 
   // Load custom selectors (Moved here to avoid early storage contention)
   const { settings = {} } = await chrome.storage.local.get("settings");
-  if (typeof SiteSelectors !== "undefined" && settings.customFaucets) {
-    SiteSelectors.injectCustom(settings.customFaucets);
+  if (typeof __FP_Selectors !== "undefined" && settings.customFaucets) {
+    __FP_Selectors.injectCustom(settings.customFaucets);
   }
 
   // GUARD: do nothing if the user opened this page manually

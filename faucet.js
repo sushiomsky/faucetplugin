@@ -26,13 +26,13 @@ function startDiceHangWatchdog(diceEnabled) {
 const NO_MORE_PATTERNS = /no more|no bonus|all claimed|come back|no free|exhausted|used up|no spins|0 spins/i;
 
 function bonusExhausted() {
-  const badge = SiteSelectors.getFirstValid('faucetBonusBadge');
+  const badge = __FP_Selectors.getFirstValid('faucetBonusBadge');
   if (badge && parseInt(badge.textContent) <= 0) {
     log("Bonus exhausted: free_spins badge = 0");
     return true;
   }
   
-  const msgEls = SiteSelectors.getAllValid('faucetBonusMessages');
+  const msgEls = __FP_Selectors.getAllValid('faucetBonusMessages');
   for (const el of msgEls) {
     if (!el.offsetParent) continue;
     if (el.children.length > 3) continue; 
@@ -47,7 +47,7 @@ function bonusExhausted() {
 const CLAIM_KEYWORDS = ["claim", "collect", "roll", "submit", "get", "spin"];
 
 function findBonusTab() {
-  const el = SiteSelectors.getFirstValid("faucetBonusTab");
+  const el = __FP_Selectors.getFirstValid("faucetBonusTab");
   if (el) {
     log(`Found bonus tab with selector`);
     return el;
@@ -73,7 +73,7 @@ function findBonusTab() {
 }
 
 function findClaimButtonInContext(context = document) {
-  for (const el of SiteSelectors.getAllValid('faucetClaimBtnContext', context)) {
+  for (const el of __FP_Selectors.getAllValid('faucetClaimBtnContext', context)) {
     if (!el.offsetParent) continue; 
     if (el.disabled) continue;
     
@@ -91,7 +91,7 @@ function findClaimButtonInContext(context = document) {
     }
   }
   
-  const btnByAttr = SiteSelectors.getFirstValid('faucetClaimBtnContextAttr', context);
+  const btnByAttr = __FP_Selectors.getFirstValid('faucetClaimBtnContextAttr', context);
   if (btnByAttr) {
     const onclick = btnByAttr.getAttribute('onclick') || '';
     if (!onclick.includes('dice')) {
@@ -127,7 +127,7 @@ async function claimBonusFaucets() {
     bonusTab.click(); 
     await sleep(3000); 
 
-    let bonusContent = SiteSelectors.getFirstValid('faucetBonusContent');
+    let bonusContent = __FP_Selectors.getFirstValid('faucetBonusContent');
     if (!bonusContent) {
       bonusContent = document.body; 
     }
@@ -202,7 +202,7 @@ async function claimBonusFaucets() {
 }
 
 function detectCooldown() {
-  const timer = SiteSelectors.getFirstValid("faucetCooldownTimer");
+  const timer = __FP_Selectors.getFirstValid("faucetCooldownTimer");
   if (!timer) return null;
 
   const text = timer.innerText.trim();
@@ -231,7 +231,7 @@ function detectCooldown() {
 
 async function tryClaimHourlyFaucet() {
   const claimKeywords = ["claim", "collect", "roll", "submit", "get"];
-  const selectors = SiteSelectors.get("faucetClaimBtnPrimary");
+  const selectors = __FP_Selectors.get("faucetClaimBtnPrimary");
   let btn = null;
   outer: for (const sel of selectors) {
     const elements = document.querySelectorAll(sel);

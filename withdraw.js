@@ -15,7 +15,7 @@ function scrapeMinimumWithdrawal() {
     }
   }
 
-  const selectors = SiteSelectors.get("withdrawMinAmountText");
+  const selectors = __FP_Selectors.get("withdrawMinAmountText");
   for (const sel of selectors) {
     const el = document.querySelector(sel);
     if (!el) continue;
@@ -85,7 +85,7 @@ async function runWithdraw(address) {
     chrome.runtime.sendMessage({ type: "scraped-min-wd", url: location.href, value: minWd });
   }
 
-  const addrEl = SiteSelectors.getFirstValid("withdrawAddressInput");
+  const addrEl = __FP_Selectors.getFirstValid("withdrawAddressInput");
   if (!addrEl) { sendWdError("no-address-input"); return; }
   console.log(`[FaucetPlugin] Filling address in <${addrEl.tagName} id="${addrEl.id}">`);
 
@@ -104,7 +104,7 @@ async function runWithdraw(address) {
   }
   await sleep(1500); 
 
-  const maxBtn = SiteSelectors.getFirstValid("withdrawMaxBtn");
+  const maxBtn = __FP_Selectors.getFirstValid("withdrawMaxBtn");
   if (maxBtn) {
     console.log("[FaucetPlugin] Triggering max balance...");
     if (window.$) $('#max_amount').trigger('click');
@@ -124,11 +124,11 @@ async function runWithdraw(address) {
   console.log("[FaucetPlugin] ✓ Withdrawal captcha resolved");
   await sleep(1000);
 
-  let submitBtn = SiteSelectors.getAllValid("withdrawSubmitBtnFallback").find(b =>
+  let submitBtn = __FP_Selectors.getAllValid("withdrawSubmitBtnFallback").find(b =>
       /withdraw|send|submit/i.test(b.textContent)
   );
   if (!submitBtn) {
-    submitBtn = SiteSelectors.getFirstValid("withdrawSubmitBtn");
+    submitBtn = __FP_Selectors.getFirstValid("withdrawSubmitBtn");
   }
 
   if (!submitBtn) {

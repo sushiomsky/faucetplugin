@@ -308,7 +308,7 @@ async function fetchMinWithdrawal(faucet) {
     const doc = parser.parseFromString(html, 'text/html');
     
     // Scrape withdrawal minimums using unified selectors and patterns
-    const selectors = SiteSelectors.get("withdrawMinAmountText");
+    const selectors = __FP_Selectors.get("withdrawMinAmountText");
     for (const sel of selectors) {
       const el = doc.querySelector(sel);
       if (el) {
@@ -374,7 +374,7 @@ async function fetchCooldown(faucet) {
     const doc = parser.parseFromString(html, 'text/html');
     
     // Use unified selectors for cooldown timers
-    const selectors = SiteSelectors.get("faucetCooldownTimer");
+    const selectors = __FP_Selectors.get("faucetCooldownTimer");
     for (const sel of selectors) {
       const el = doc.querySelector(sel);
       if (el) {
@@ -453,9 +453,9 @@ async function loadSettings() {
       const merged = { ...def, ...(storedByUrl[normalizeUrl(def.url)] || {}) };
       try {
         let dUser = merged.username || "", dPass = merged.password || "";
-        if (typeof CryptoUtils !== "undefined" && dUser && dUser.length > 30) {
-          dUser = await CryptoUtils.decrypt(dUser);
-          dPass = await CryptoUtils.decrypt(dPass);
+        if (typeof __FP_Crypto !== "undefined" && dUser && dUser.length > 30) {
+          dUser = await __FP_Crypto.decrypt(dUser);
+          dPass = await __FP_Crypto.decrypt(dPass);
         }
         return { ...merged, username: dUser, password: dPass };
       } catch (e) {
@@ -957,9 +957,9 @@ window.onclick = (event) => {
 saveBtn.onclick = async () => {
   const faucetsToSave = await Promise.all(currentFaucets.map(async f => {
     let eUser = f.username || "", ePass = f.password || "";
-    if (typeof CryptoUtils !== "undefined") {
-      eUser = await CryptoUtils.encrypt(eUser);
-      ePass = await CryptoUtils.encrypt(ePass);
+    if (typeof __FP_Crypto !== "undefined") {
+      eUser = await __FP_Crypto.encrypt(eUser);
+      ePass = await __FP_Crypto.encrypt(ePass);
     }
     return { ...f, username: eUser, password: ePass };
   }));
@@ -1107,9 +1107,9 @@ document.getElementById("exportBtn").onclick = async () => {
     if (settings.faucets) {
       settings.faucets = await Promise.all(settings.faucets.map(async f => {
         let u = f.username || "", p = f.password || "";
-        if (typeof CryptoUtils !== "undefined" && u.length > 30) {
-          try { u = await CryptoUtils.decrypt(u); } catch(e){}
-          try { p = await CryptoUtils.decrypt(p); } catch(e){}
+        if (typeof __FP_Crypto !== "undefined" && u.length > 30) {
+          try { u = await __FP_Crypto.decrypt(u); } catch(e){}
+          try { p = await __FP_Crypto.decrypt(p); } catch(e){}
         }
         return { ...f, username: u, password: p };
       }));
@@ -1154,9 +1154,9 @@ document.getElementById("importFile").onchange = async (e) => {
       if (merged.faucets) {
         merged.faucets = await Promise.all(merged.faucets.map(async f => {
           let u = f.username || "", p = f.password || "";
-          if (typeof CryptoUtils !== "undefined" && u && u.length < 30) {
-            try { u = await CryptoUtils.encrypt(u); } catch(e){}
-            try { p = await CryptoUtils.encrypt(p); } catch(e){}
+          if (typeof __FP_Crypto !== "undefined" && u && u.length < 30) {
+            try { u = await __FP_Crypto.encrypt(u); } catch(e){}
+            try { p = await __FP_Crypto.encrypt(p); } catch(e){}
           }
           return { ...f, username: u, password: p };
         }));

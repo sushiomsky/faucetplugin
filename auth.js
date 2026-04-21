@@ -13,9 +13,9 @@ async function getCredentials() {
   let password = faucet.password || "";
 
   // Decrypt if necessary. We assume crypto-utils.js is loaded in the same context.
-  if (typeof CryptoUtils !== 'undefined') {
-    username = await CryptoUtils.decrypt(username);
-    password = await CryptoUtils.decrypt(password);
+  if (typeof __FP_Crypto !== 'undefined') {
+    username = await __FP_Crypto.decrypt(username);
+    password = await __FP_Crypto.decrypt(password);
   }
 
   return { username, password };
@@ -59,13 +59,13 @@ async function waitForPasswordManagerAutofill(userInput, pwdInput, timeoutMs = 1
 }
 
 function setupManualLoginCapture() {
-  const forms = SiteSelectors.getAllValid("loginForm");
+  const forms = __FP_Selectors.getAllValid("loginForm");
   for (const form of forms) {
-    if (!SiteSelectors.getFirstValid("loginPassword", form)) continue; 
+    if (!__FP_Selectors.getFirstValid("loginPassword", form)) continue; 
     
     async function onManualLoginSubmit() {
-      const userInput = SiteSelectors.getFirstValid("loginEmail", form);
-      const pwdInput = SiteSelectors.getFirstValid("loginPassword", form);
+      const userInput = __FP_Selectors.getFirstValid("loginEmail", form);
+      const pwdInput = __FP_Selectors.getFirstValid("loginPassword", form);
       
       const username = userInput?.value?.trim();
       const password = pwdInput?.value?.trim();
@@ -81,9 +81,9 @@ function setupManualLoginCapture() {
           if (faucet) {
             let encUser = username;
             let encPass = password;
-            if (typeof CryptoUtils !== 'undefined') {
-              encUser = await CryptoUtils.encrypt(username);
-              encPass = await CryptoUtils.encrypt(password);
+            if (typeof __FP_Crypto !== 'undefined') {
+              encUser = await __FP_Crypto.encrypt(username);
+              encPass = await __FP_Crypto.encrypt(password);
             }
             faucet.username = encUser;
             faucet.password = encPass;
@@ -112,9 +112,9 @@ async function runLogin() {
   const maxAttempts = Math.ceil(window.LOGIN_FORM_WAIT_MS / 500);
 
   for (let i = 0; i < maxAttempts; i++) {
-    const forms = SiteSelectors.getAllValid("loginForm");
-    form = forms.find(f => SiteSelectors.getFirstValid("loginPassword", f));
-    pwdInput = form ? SiteSelectors.getFirstValid("loginPassword", form) : SiteSelectors.getFirstValid("loginPassword");
+    const forms = __FP_Selectors.getAllValid("loginForm");
+    form = forms.find(f => __FP_Selectors.getFirstValid("loginPassword", f));
+    pwdInput = form ? __FP_Selectors.getFirstValid("loginPassword", form) : __FP_Selectors.getFirstValid("loginPassword");
 
     if (pwdInput) {
       loginScope = form || pwdInput.closest("form") || document;
@@ -131,7 +131,7 @@ async function runLogin() {
     return;
   }
 
-  const userInput = SiteSelectors.getFirstValid("loginEmail", loginScope) || SiteSelectors.getFirstValid("loginEmail", document);
+  const userInput = __FP_Selectors.getFirstValid("loginEmail", loginScope) || __FP_Selectors.getFirstValid("loginEmail", document);
 
   const creds = await getCredentials();
   const hasStoredCreds = !!(creds.username && creds.password);
@@ -184,9 +184,9 @@ async function runLogin() {
     log("✓ Login captcha resolved");
   }
 
-  let submitBtn = SiteSelectors.getFirstValid("loginSubmitBySelector", loginScope);
+  let submitBtn = __FP_Selectors.getFirstValid("loginSubmitBySelector", loginScope);
   if (!submitBtn) {
-    const textBtns = SiteSelectors.getAllValid("loginSubmitByText", loginScope);
+    const textBtns = __FP_Selectors.getAllValid("loginSubmitByText", loginScope);
     submitBtn = textBtns.find(el => !el.disabled && /login|log in|sign in|submit|continue/i.test((el.textContent || el.value || "").trim()));
   }
 
