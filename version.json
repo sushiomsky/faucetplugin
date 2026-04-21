@@ -1,5 +1,5 @@
 {
-  "version": "2.8.0",
-  "download_url": "https://github.com/sushiomsky/faucetplugin/raw/main/faucet-pro-v2.8.0.zip",
-  "changelog": "v2.8.0 — Implemented \"40% Dice Momentum Strategy (Controlled Aggression)\". Fixed critical script loading issue in manifest for Dice and Withdrawal phases. Added automated DOM diagnostics for betting engine."
+  "version": "2.8.1",
+  "download_url": "https://github.com/sushiomsky/faucetplugin/raw/main/faucet-pro-v2.8.1.zip",
+  "changelog": "v2.8.1 — Implemented \"Occasional Lottery Bets\" extension for Momentum Strategy. Fixed hardcoded version display in popup UI. Synchronized manifest and build orchestration."
 }

@@ -103,7 +103,11 @@ const DEFAULT_MOMENTUM_40_CONFIG = Object.freeze({
   chance: 40.0,
   base_bet_pct: 2.0,
   multiplier: 1.25,
-  max_increases: 3
+  max_increases: 3,
+  lottery_enabled: false,
+  lottery_frequency: 100,
+  lottery_win_chance: 0.5,
+  lottery_safe_mode: true
 });
 
 // ── Anti-Detection & Timing Defaults ─────────────────────────────────────────

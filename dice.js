@@ -226,6 +226,7 @@ class DiceMomentumStrategy {
     this.api = api;
     this.logger = logger;
     this.winStreak = 0;
+    this.roundCount = 0;
     this.isInitialized = false;
   }
 
@@ -247,12 +248,21 @@ class DiceMomentumStrategy {
     const currentBalance = await this.api.getBalance();
     if (currentBalance <= 0) return { stop: true, reason: "zero-balance" };
 
+    this.roundCount++;
     const betAmount = this.calculateBet(currentBalance);
     
+    let currentChance = this.config.chance;
+    const isLotteryRound = this.config.lottery_enabled && (this.roundCount % this.config.lottery_frequency === 0);
+    
+    if (isLotteryRound) {
+      currentChance = this.config.lottery_win_chance;
+      this.logger(`[Momentum] 🎰 LOTTERY ROUND TRIGGERED! Round: ${this.roundCount} | Chance: ${currentChance}%`);
+    }
+
     this.logger(`[Momentum] Streak: ${this.winStreak} | Bet: ${betAmount.toFixed(8)} | Bal: ${currentBalance.toFixed(8)}`);
 
     await this.api.setBetAmount(betAmount);
-    await this.api.setChance(this.config.chance);
+    await this.api.setChance(currentChance);
     await this.api.setSide(this.config.side || "higher");
 
     const balanceBefore = await this.api.getBalance();
@@ -271,8 +281,13 @@ class DiceMomentumStrategy {
       this.winStreak++;
       this.logger(`[Momentum] WIN! Streak is now ${this.winStreak}`);
     } else {
-      this.winStreak = 0;
-      this.logger(`[Momentum] LOSS. Resetting streak.`);
+      // Safe Mode: Lottery losses don't reset the momentum streak
+      if (isLotteryRound && this.config.lottery_safe_mode) {
+        this.logger(`[Momentum] Lottery loss ignored (Safe Mode). Streak preserved at ${this.winStreak}`);
+      } else {
+        this.winStreak = 0;
+        this.logger(`[Momentum] LOSS. Resetting streak.`);
+      }
     }
 
     return { stop: false };

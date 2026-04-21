@@ -690,6 +690,26 @@ function renderConfigForSite(index) {
              <label class="label" style="font-size:9px;">Max Increases</label>
              <input type="number" id="momMaxInc" value="${f.dbMomentumConfig?.max_increases || 3}">
           </div>
+          <div style="margin-top:5px; padding-top:5px; border-top:1px dashed rgba(255,255,255,0.1);">
+            <div class="field" style="flex-direction:row; justify-content:space-between; align-items:center;">
+              <label class="label" style="font-size:9px;">🎰 Enable Lottery</label>
+              <input type="checkbox" id="momLotteryEn" ${f.dbMomentumConfig?.lottery_enabled ? "checked" : ""} style="width:auto;">
+            </div>
+            <div class="input-row" style="margin-top:5px;">
+              <div class="field">
+                <label class="label" style="font-size:9px;">Every N Bets</label>
+                <input type="number" id="momLotteryN" value="${f.dbMomentumConfig?.lottery_frequency || 100}">
+              </div>
+              <div class="field">
+                <label class="label" style="font-size:9px;">Lottery Win %</label>
+                <input type="number" id="momLotteryWin" value="${f.dbMomentumConfig?.lottery_win_chance || 0.5}" step="0.01">
+              </div>
+            </div>
+            <div class="field" style="flex-direction:row; justify-content:space-between; align-items:center; margin-top:5px;">
+              <label class="label" style="font-size:9px; color:var(--status-ok)">Safe Mode (Streak Prot.)</label>
+              <input type="checkbox" id="momLotterySafe" ${f.dbMomentumConfig?.lottery_safe_mode !== false ? "checked" : ""} style="width:auto;">
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -852,6 +872,16 @@ function renderConfigForSite(index) {
       if (momMultEl) f.dbMomentumConfig.multiplier = parseFloat(momMultEl.value);
       const momMaxEl = card.querySelector("#momMaxInc");
       if (momMaxEl) f.dbMomentumConfig.max_increases = parseInt(momMaxEl.value);
+
+      // Lottery settings
+      const momLotteryEnEl = card.querySelector("#momLotteryEn");
+      if (momLotteryEnEl) f.dbMomentumConfig.lottery_enabled = momLotteryEnEl.checked;
+      const momLotteryNEl = card.querySelector("#momLotteryN");
+      if (momLotteryNEl) f.dbMomentumConfig.lottery_frequency = parseInt(momLotteryNEl.value);
+      const momLotteryWinEl = card.querySelector("#momLotteryWin");
+      if (momLotteryWinEl) f.dbMomentumConfig.lottery_win_chance = parseFloat(momLotteryWinEl.value);
+      const momLotterySafeEl = card.querySelector("#momLotterySafe");
+      if (momLotterySafeEl) f.dbMomentumConfig.lottery_safe_mode = momLotterySafeEl.checked;
       const taChanceEl = card.querySelector("#taChance");
       if (taChanceEl) f.dbTimeAccumulatorConfig.chance = parseFloat(taChanceEl.value);
       const taMinFracEl = card.querySelector("#taMinFrac");
